@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // This endpoint processes audio/video transcriptions and extracts concepts
 export async function POST(request: NextRequest) {
@@ -13,46 +13,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'OpenAI API key not configured' },
+        { error: 'Google Gemini API key not configured' },
         { status: 500 }
       );
     }
 
-    const openai = new OpenAI({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
-    // Use GPT to extract key concepts from the transcript
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an educational assistant that extracts key concepts from lecture transcripts. 
-          For each concept, provide:
-          1. A clear label (2-5 words)
-          2. The type (main, concept, or detail)
-          3. A brief explanation (optional)
-          
-          Return the concepts as a JSON array.`
-        },
-        {
-          role: 'user',
-          content: `Extract key concepts from this lecture segment: "${transcript}"`
-        }
-      ],
-      temperature: 0.7,
-      max_tokens: 500,
-    });
+    const prompt = `You are an educational assistant that extracts key concepts from lecture transcripts. 
+For each concept, provide:
+1. A clear label (2-5 words)
+2. The type (main, concept, or detail)
+3. A brief explanation (optional)
 
-    const content = completion.choices[0].message.content;
+Return the concepts as a JSON array.
+
+Extract key concepts from this lecture segment: "${transcript}"`;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const content = response.text();
     
     // Parse the AI response
     let concepts;
     try {
-      concepts = JSON.parse(content || '[]');
+      // Gemini sometimes wraps JSON in markdown code blocks, so clean it
+      const cleanedContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      concepts = JSON.parse(cleanedContent);
     } catch {
       // If parsing fails, create a simple concept from the transcript
       concepts = [{
