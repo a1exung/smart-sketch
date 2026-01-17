@@ -103,10 +103,17 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
 
   if (!isActive) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-100 rounded-lg">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🎥</div>
-          <p className="text-gray-600">Click &quot;Start Session&quot; to begin</p>
+      <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-50 via-primary-50/20 to-accent-50/20 rounded-xl">
+        <div className="text-center p-8 animate-fade-in">
+          <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-primary-100 to-accent-100 rounded-2xl flex items-center justify-center">
+            <svg className="w-10 h-10 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <p className="text-slate-700 text-lg font-semibold mb-2">Ready to Capture</p>
+          <p className="text-slate-500 text-sm max-w-xs mx-auto">
+            Click &quot;Start Session&quot; to begin recording and analyzing your lecture
+          </p>
         </div>
       </div>
     );
@@ -114,10 +121,14 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
 
   if (connecting) {
     return (
-      <div className="flex items-center justify-center h-full bg-gray-100 rounded-lg">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Connecting to LiveKit...</p>
+      <div className="flex items-center justify-center h-full bg-gradient-to-br from-slate-50 via-primary-50/20 to-accent-50/20 rounded-xl">
+        <div className="text-center p-8">
+          <div className="relative w-16 h-16 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-primary-200"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-primary-600 border-t-transparent animate-spin"></div>
+          </div>
+          <p className="text-slate-700 font-medium mb-2">Connecting to LiveKit</p>
+          <p className="text-slate-500 text-sm">Setting up your capture session...</p>
         </div>
       </div>
     );
@@ -125,21 +136,33 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-full bg-red-50 rounded-lg border border-red-200">
-        <div className="text-center p-4">
-          <div className="text-4xl mb-4">⚠️</div>
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={fetchToken}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Retry Connection
-          </button>
-          <div className="mt-4 text-sm text-gray-600">
-            <p>For demo purposes, click below to simulate:</p>
+      <div className="flex items-center justify-center h-full bg-gradient-to-br from-red-50 to-orange-50 rounded-xl border-2 border-red-200">
+        <div className="text-center p-8 max-w-md">
+          <div className="w-16 h-16 mx-auto mb-6 bg-red-100 rounded-2xl flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <p className="text-red-700 font-semibold mb-2">Connection Error</p>
+          <p className="text-red-600 text-sm mb-6">{error}</p>
+          <div className="space-y-3">
+            <button
+              onClick={fetchToken}
+              className="w-full btn-primary"
+            >
+              Retry Connection
+            </button>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-300"></div>
+              </div>
+              <div className="relative flex justify-center text-xs">
+                <span className="px-2 bg-gradient-to-br from-red-50 to-orange-50 text-slate-500">or try demo mode</span>
+              </div>
+            </div>
             <button
               onClick={simulateTranscript}
-              className="mt-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              className="w-full px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 hover:scale-105 transition-all duration-200 shadow-lg shadow-emerald-500/30"
             >
               Simulate Lecture Transcript
             </button>
@@ -153,16 +176,21 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
 
   if (!livekitUrl || !token) {
     return (
-      <div className="flex items-center justify-center h-full bg-yellow-50 rounded-lg border border-yellow-200">
-        <div className="text-center p-4">
-          <div className="text-4xl mb-4">⚙️</div>
-          <p className="text-yellow-700 mb-2">LiveKit not configured</p>
-          <p className="text-sm text-gray-600 mb-4">Configure your .env.local file to enable live capture</p>
+      <div className="flex items-center justify-center h-full bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border-2 border-amber-200">
+        <div className="text-center p-8 max-w-md">
+          <div className="w-16 h-16 mx-auto mb-6 bg-amber-100 rounded-2xl flex items-center justify-center">
+            <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <p className="text-amber-700 font-semibold mb-2">LiveKit Not Configured</p>
+          <p className="text-amber-600 text-sm mb-6">Configure your .env.local file to enable live capture</p>
           <button
             onClick={simulateTranscript}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+            className="w-full px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 hover:scale-105 transition-all duration-200 shadow-lg shadow-emerald-500/30"
           >
-            Simulate Lecture Transcript
+            Try Demo Mode
           </button>
         </div>
       </div>
@@ -170,7 +198,7 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
   }
 
   return (
-    <div className="h-full">
+    <div className="h-full relative">
       <LiveKitRoom
         serverUrl={livekitUrl}
         token={token}
@@ -179,18 +207,32 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
         video={true}
         className="h-full"
       >
-        <div className="grid grid-cols-1 gap-4 h-full">
-          <div className="bg-black rounded-lg overflow-hidden">
+        <div className="h-full space-y-4">
+          <div className="bg-slate-900 rounded-xl overflow-hidden shadow-xl border-2 border-slate-700 relative h-3/4">
             <VideoTrack />
+            <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-2 bg-red-600 rounded-full shadow-lg animate-pulse-slow">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              <span className="text-white text-xs font-semibold">LIVE</span>
+            </div>
           </div>
-          <div className="bg-gray-800 rounded-lg p-2">
+          <div className="bg-slate-800 rounded-xl p-4 shadow-lg border border-slate-700 h-1/4 flex items-center justify-center">
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-1 bg-primary-500 rounded-full animate-pulse"
+                    style={{
+                      height: `${Math.random() * 20 + 10}px`,
+                      animationDelay: `${i * 0.1}s`,
+                    }}
+                  ></div>
+                ))}
+              </div>
+              <span className="text-slate-300 text-sm font-medium">Audio Active</span>
+            </div>
             <AudioTrack />
           </div>
-        </div>
-        <div className="mt-2 text-center">
-          <span className="inline-block bg-red-600 text-white px-3 py-1 rounded-full text-sm">
-            🔴 Live
-          </span>
         </div>
       </LiveKitRoom>
     </div>
