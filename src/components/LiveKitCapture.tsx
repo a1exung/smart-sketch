@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Room, RoomEvent } from 'livekit-client';
-import { LiveKitRoom, VideoTrack, AudioTrack, useParticipant } from '@livekit/components-react';
-import '@livekit/components-styles';
+import { LiveKitRoom, VideoTrack, AudioTrack } from '@livekit/components-react';
 
 interface LiveKitCaptureProps {
   isActive: boolean;
@@ -27,7 +26,7 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
         clearInterval(processingTimerRef.current);
       }
     };
-  }, [isActive]);
+  }, [isActive, token]);
 
   const fetchToken = async () => {
     setConnecting(true);
@@ -107,7 +106,7 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
       <div className="flex items-center justify-center h-full bg-gray-100 rounded-lg">
         <div className="text-center">
           <div className="text-6xl mb-4">🎥</div>
-          <p className="text-gray-600">Click "Start Session" to begin</p>
+          <p className="text-gray-600">Click &quot;Start Session&quot; to begin</p>
         </div>
       </div>
     );

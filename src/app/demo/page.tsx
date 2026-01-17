@@ -5,39 +5,39 @@ import MindMapVisualization from '@/components/MindMapVisualization';
 import Link from 'next/link';
 
 // Sample demo data showing how concepts are structured
-const demoConceptsSequence = [
+const demoConceptsSequence: Array<Array<{ id: string; label: string; type: 'main' | 'concept' | 'detail'; parent?: string }>> = [
   [
-    { id: '1', label: 'Introduction to React', type: 'main' }
+    { id: '1', label: 'Introduction to React', type: 'main' as const }
   ],
   [
-    { id: '1', label: 'Introduction to React', type: 'main' },
-    { id: '2', label: 'Components', type: 'concept', parent: '1' }
+    { id: '1', label: 'Introduction to React', type: 'main' as const },
+    { id: '2', label: 'Components', type: 'concept' as const, parent: '1' }
   ],
   [
-    { id: '1', label: 'Introduction to React', type: 'main' },
-    { id: '2', label: 'Components', type: 'concept', parent: '1' },
-    { id: '3', label: 'JSX', type: 'concept', parent: '1' }
+    { id: '1', label: 'Introduction to React', type: 'main' as const },
+    { id: '2', label: 'Components', type: 'concept' as const, parent: '1' },
+    { id: '3', label: 'JSX', type: 'concept' as const, parent: '1' }
   ],
   [
-    { id: '1', label: 'Introduction to React', type: 'main' },
-    { id: '2', label: 'Components', type: 'concept', parent: '1' },
-    { id: '3', label: 'JSX', type: 'concept', parent: '1' },
-    { id: '4', label: 'Functional Components', type: 'detail', parent: '2' }
+    { id: '1', label: 'Introduction to React', type: 'main' as const },
+    { id: '2', label: 'Components', type: 'concept' as const, parent: '1' },
+    { id: '3', label: 'JSX', type: 'concept' as const, parent: '1' },
+    { id: '4', label: 'Functional Components', type: 'detail' as const, parent: '2' }
   ],
   [
-    { id: '1', label: 'Introduction to React', type: 'main' },
-    { id: '2', label: 'Components', type: 'concept', parent: '1' },
-    { id: '3', label: 'JSX', type: 'concept', parent: '1' },
-    { id: '4', label: 'Functional Components', type: 'detail', parent: '2' },
-    { id: '5', label: 'Class Components', type: 'detail', parent: '2' }
+    { id: '1', label: 'Introduction to React', type: 'main' as const },
+    { id: '2', label: 'Components', type: 'concept' as const, parent: '1' },
+    { id: '3', label: 'JSX', type: 'concept' as const, parent: '1' },
+    { id: '4', label: 'Functional Components', type: 'detail' as const, parent: '2' },
+    { id: '5', label: 'Class Components', type: 'detail' as const, parent: '2' }
   ],
   [
-    { id: '1', label: 'Introduction to React', type: 'main' },
-    { id: '2', label: 'Components', type: 'concept', parent: '1' },
-    { id: '3', label: 'JSX', type: 'concept', parent: '1' },
-    { id: '4', label: 'Functional Components', type: 'detail', parent: '2' },
-    { id: '5', label: 'Class Components', type: 'detail', parent: '2' },
-    { id: '6', label: 'State Management', type: 'concept', parent: '1' }
+    { id: '1', label: 'Introduction to React', type: 'main' as const },
+    { id: '2', label: 'Components', type: 'concept' as const, parent: '1' },
+    { id: '3', label: 'JSX', type: 'concept' as const, parent: '1' },
+    { id: '4', label: 'Functional Components', type: 'detail' as const, parent: '2' },
+    { id: '5', label: 'Class Components', type: 'detail' as const, parent: '2' },
+    { id: '6', label: 'State Management', type: 'concept' as const, parent: '1' }
   ],
 ];
 
