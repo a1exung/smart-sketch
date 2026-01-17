@@ -16,8 +16,10 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
   const transcriptBufferRef = useRef<string>('');
   const processingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
+
   useEffect(() => {
-    if (isActive && !token) {
+    if (isActive && !token && livekitUrl) {
       fetchToken();
     }
 
@@ -26,7 +28,7 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
         clearInterval(processingTimerRef.current);
       }
     };
-  }, [isActive, token]);
+  }, [isActive, token, livekitUrl]);
 
   const fetchToken = async () => {
     setConnecting(true);
@@ -112,6 +114,24 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
     );
   }
 
+  if (!livekitUrl) {
+    return (
+      <div className="flex items-center justify-center h-full bg-yellow-50 rounded-lg border border-yellow-200">
+        <div className="text-center p-4">
+          <div className="text-4xl mb-4">⚙️</div>
+          <p className="text-yellow-700 mb-2">LiveKit not configured</p>
+          <p className="text-sm text-gray-600 mb-4">Configure your .env.local file to enable live capture</p>
+          <button
+            onClick={simulateTranscript}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          >
+            Simulate Lecture Transcript
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (connecting) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-100 rounded-lg">
@@ -148,22 +168,14 @@ export default function LiveKitCapture({ isActive, onConceptExtracted }: LiveKit
       </div>
     );
   }
-
-  const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || '';
-
-  if (!livekitUrl || !token) {
+  
+  if (!token) {
+    // This state can be reached if token fetch fails and there's no error message.
+    // Or if the component is active but the token fetch hasn't started.
     return (
-      <div className="flex items-center justify-center h-full bg-yellow-50 rounded-lg border border-yellow-200">
-        <div className="text-center p-4">
-          <div className="text-4xl mb-4">⚙️</div>
-          <p className="text-yellow-700 mb-2">LiveKit not configured</p>
-          <p className="text-sm text-gray-600 mb-4">Configure your .env.local file to enable live capture</p>
-          <button
-            onClick={simulateTranscript}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            Simulate Lecture Transcript
-          </button>
+      <div className="flex items-center justify-center h-full bg-gray-100 rounded-lg">
+        <div className="text-center">
+          <p className="text-gray-600">Preparing session...</p>
         </div>
       </div>
     );
