@@ -7,6 +7,9 @@ import ReactFlow, { Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant } from 'livekit-client';
+import { saveSession } from '@/lib/sessions-service';
+import { useAuth } from '@/lib/auth-context';
+import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
 
 // Types for agent messages
 interface ConceptData {
@@ -24,10 +27,9 @@ interface AgentMessage {
     timestamp?: string;
   };
 }
-import { useAuth } from '@/lib/auth-context';
-import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
 
 export default function RecordPage() {
+  const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const roomRef = useRef<Room | null>(null);
 
@@ -51,6 +53,10 @@ export default function RecordPage() {
   const [homeModalMode, setHomeModalMode] = useState<'active' | 'ended'>('active');
   const [recordingTitle, setRecordingTitle] = useState('');
   const [recordingTitleError, setRecordingTitleError] = useState('');
+
+  // Audio recording state
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   // LiveKit state
   const [liveKitConnected, setLiveKitConnected] = useState(false);
@@ -297,6 +303,24 @@ export default function RecordPage() {
       setRecordingEnded(false);
       setShowFlowBoard(true);
 
+      // Start audio recording
+      try {
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.start();
+        console.log('Audio recording started');
+      } catch (error) {
+        console.error('Failed to start audio recording:', error);
+      }
+
       // Reset mind map
       setNodes([{
         id: 'center',
@@ -340,6 +364,12 @@ export default function RecordPage() {
   };
 
   const confirmStopRecording = () => {
+    // Stop audio recording
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      console.log('Audio recording stopped');
+    }
+
     disconnectFromLiveKit();
     setIsRecording(false);
     setIsPaused(false);
@@ -735,12 +765,44 @@ export default function RecordPage() {
                   </Link>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       if (!recordingTitle.trim()) {
                         setRecordingTitleError('Please enter a title before saving.');
                         return;
                       }
                       setRecordingTitleError('');
+                      
+                      // Save to Supabase
+                      if (user?.id) {
+                        const fullTranscript = transcripts.join(' ');
+                        
+                        // Create audio blob from chunks
+                        let audioBlob: Blob | undefined;
+                        console.log('[Save Button] Audio chunks count:', audioChunksRef.current.length);
+                        if (audioChunksRef.current.length > 0) {
+                          audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                          console.log('[Save Button] Audio blob created, size:', audioBlob.size, 'bytes');
+                        } else {
+                          console.warn('[Save Button] No audio chunks collected!');
+                        }
+                        
+                        const result = await saveSession(
+                          user.id,
+                          recordingTitle,
+                          fullTranscript,
+                          nodes,
+                          edges,
+                          audioBlob
+                        );
+                        
+                        if (!result.success) {
+                          setRecordingTitleError(`Failed to save: ${result.error}`);
+                          return;
+                        }
+                        
+                        console.log('[RecordPage] Session saved with ID:', result.sessionId);
+                      }
+                      
                       setShowHomeModal(false);
                       router.push('/home');
                     }}
