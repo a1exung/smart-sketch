@@ -66,9 +66,9 @@ export default function RecordPage() {
       data: { label: 'Lecture' },
       position: { x: 250, y: 200 },
       style: {
-        background: '#3b82f6',
-        color: 'white',
-        border: '2px solid #1d4ed8',
+        background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+        color: '#0c0f14',
+        border: 'none',
         borderRadius: '50%',
         width: 100,
         height: 100,
@@ -77,6 +77,7 @@ export default function RecordPage() {
         justifyContent: 'center',
         fontSize: '14px',
         fontWeight: 'bold',
+        boxShadow: '0 0 30px rgba(20, 184, 166, 0.4)',
       },
     },
   ]);
@@ -97,11 +98,11 @@ export default function RecordPage() {
     const x = 250 + radius * Math.cos(angle);
     const y = 200 + radius * Math.sin(angle);
 
-    // Different colors based on concept type
+    // Colors based on concept type - updated for new theme
     const colors = {
-      main: { bg: '#10b981', border: '#059669' },
-      concept: { bg: '#f59e0b', border: '#d97706' },
-      detail: { bg: '#8b5cf6', border: '#7c3aed' },
+      main: { bg: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', border: '#0d9488', text: '#0c0f14' },
+      concept: { bg: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', border: '#d97706', text: '#0c0f14' },
+      detail: { bg: 'linear-gradient(135deg, #1a1f2b 0%, #12161e 100%)', border: 'rgba(255,255,255,0.1)', text: '#f0f2f5' },
     };
 
     const color = colors[concept.type] || colors.concept;
@@ -112,14 +113,15 @@ export default function RecordPage() {
       position: { x, y },
       style: {
         background: color.bg,
-        color: 'white',
-        border: `2px solid ${color.border}`,
-        borderRadius: '8px',
-        padding: '10px',
+        color: color.text,
+        border: `1px solid ${color.border}`,
+        borderRadius: '12px',
+        padding: '12px 16px',
         fontSize: '12px',
         fontWeight: '500',
-        maxWidth: '120px',
+        maxWidth: '140px',
         textAlign: 'center' as const,
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
       },
     };
 
@@ -128,7 +130,7 @@ export default function RecordPage() {
       source: 'center',
       target: nodeId,
       animated: true,
-      style: { stroke: color.border },
+      style: { stroke: '#14b8a6', strokeWidth: 2 },
     };
 
     setNodes((prev) => [...prev, newNode]);
@@ -218,7 +220,6 @@ export default function RecordPage() {
 
     } catch (error) {
       console.error('LiveKit connection error:', error);
-      // Don't fail the recording if LiveKit fails - still allow local recording
     }
   }, [handleAgentMessage]);
 
@@ -303,9 +304,9 @@ export default function RecordPage() {
         data: { label: 'Lecture' },
         position: { x: 250, y: 200 },
         style: {
-          background: '#3b82f6',
-          color: 'white',
-          border: '2px solid #1d4ed8',
+          background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+          color: '#0c0f14',
+          border: 'none',
           borderRadius: '50%',
           width: 100,
           height: 100,
@@ -314,6 +315,7 @@ export default function RecordPage() {
           justifyContent: 'center',
           fontSize: '14px',
           fontWeight: 'bold',
+          boxShadow: '0 0 30px rgba(20, 184, 166, 0.4)',
         },
       }]);
       setEdges([]);
@@ -327,8 +329,6 @@ export default function RecordPage() {
 
   const handlePauseRecording = () => {
     setIsPaused(true);
-    // Note: LiveKit doesn't have pause - tracks keep streaming
-    // You could mute the tracks if needed
   };
 
   const handleResumeRecording = () => {
@@ -366,395 +366,420 @@ export default function RecordPage() {
     <ProtectedRoute>
       <NeuralNetworkBackground />
       <div className="relative z-10 w-full min-h-screen bg-transparent overflow-hidden">
-      {/* Back Button - Top Left */}
-      <div className="absolute top-6 left-6 z-20">
-        <button
-          onClick={() => {
-            setShowHomeModal(true);
-            setHomeModalMode(isRecording ? 'active' : recordingEnded ? 'ended' : 'active');
-            setRecordingTitleError('');
-          }}
-          className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-all duration-300 transform hover:scale-105 font-semibold"
-        >
-          {isRecording || recordingEnded ? 'Return to Home' : 'Back'}
-        </button>
-      </div>
-
-      {/* Connection Status - Top Right */}
-      {isRecording && (
-        <div className="absolute top-6 right-6 z-20 flex items-center gap-2">
-          {liveKitConnected ? (
-            <div className="flex items-center gap-2 bg-green-100 px-3 py-2 rounded-lg">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-green-700 text-sm font-medium">
-                {agentReady ? 'Agent Connected' : 'Connecting to Agent...'}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 bg-yellow-100 px-3 py-2 rounded-lg">
-              <div className="w-2 h-2 bg-yellow-500 rounded-full" />
-              <span className="text-yellow-700 text-sm font-medium">Local Recording</span>
-            </div>
-          )}
+        {/* Back Button - Top Left */}
+        <div className="absolute top-6 left-6 z-20">
+          <button
+            onClick={() => {
+              setShowHomeModal(true);
+              setHomeModalMode(isRecording ? 'active' : recordingEnded ? 'ended' : 'active');
+              setRecordingTitleError('');
+            }}
+            className="px-4 py-2 rounded-xl glass text-foreground-muted hover:text-foreground transition-all duration-300 text-sm font-medium flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            {isRecording || recordingEnded ? 'Return Home' : 'Back'}
+          </button>
         </div>
-      )}
 
-      {/* Main Layout: Recording on Left, Flow Board on Right */}
-      <div className="flex h-screen w-full">
-        {/* LEFT SIDE - Recording Interface */}
-        <div className={`flex flex-col items-center justify-center px-4 pt-20 transition-all duration-500 ${showFlowBoard ? 'w-1/2' : 'w-full'}`}>
-          {showChat ? (
-            <div className="w-full max-w-2xl space-y-6 animate-[fade-in-down_0.8s_ease-out] transition-transform duration-500 ease-out">
-              <div className="text-center">
-                <h1 className="text-3xl font-bold text-white mb-2">Chat</h1>
-                <p className="text-gray-300">Ask questions about the session. AI responses coming soon.</p>
+        {/* Connection Status - Top Right */}
+        {isRecording && (
+          <div className="absolute top-6 right-6 z-20 flex items-center gap-3">
+            {liveKitConnected ? (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/20">
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                <span className="text-primary text-sm font-medium">
+                  {agentReady ? 'Agent Connected' : 'Connecting...'}
+                </span>
               </div>
+            ) : (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-accent/10 border border-accent/20">
+                <div className="w-2 h-2 bg-accent rounded-full" />
+                <span className="text-accent text-sm font-medium">Local Recording</span>
+              </div>
+            )}
+          </div>
+        )}
 
-              {/* Show transcripts if we have them */}
-              {transcripts.length > 0 && (
-                <div className="bg-blue-50 rounded-lg p-4 max-h-32 overflow-y-auto">
-                  <h3 className="text-sm font-semibold text-blue-800 mb-2">Session Transcript:</h3>
-                  <p className="text-sm text-blue-700">{transcripts.join(' ')}</p>
+        {/* Main Layout: Recording on Left, Flow Board on Right */}
+        <div className="flex h-screen w-full">
+          {/* LEFT SIDE - Recording Interface */}
+          <div className={`flex flex-col items-center justify-center px-4 pt-20 transition-all duration-500 ${showFlowBoard ? 'w-1/2' : 'w-full'}`}>
+            {showChat ? (
+              <div className="w-full max-w-2xl space-y-6 animate-fade-in-up">
+                <div className="text-center">
+                  <h1 className="text-3xl font-display font-bold text-foreground mb-2">Session Chat</h1>
+                  <p className="text-foreground-muted">Ask questions about your session</p>
                 </div>
-              )}
 
-              <div className="bg-gray-900 rounded-lg shadow-lg border border-gray-700 h-[70vh] flex flex-col">
-                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-                  {chatMessages.length === 0 && (
-                    <div className="text-sm text-gray-400 text-center">No messages yet. Start the conversation.</div>
-                  )}
-                  {chatMessages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
+                {/* Transcripts preview */}
+                {transcripts.length > 0 && (
+                  <div className="rounded-xl bg-primary/5 border border-primary/10 p-4 max-h-32 overflow-y-auto custom-scrollbar">
+                    <h3 className="text-xs font-semibold text-primary mb-2 uppercase tracking-wider">Session Transcript</h3>
+                    <p className="text-sm text-foreground-muted">{transcripts.join(' ')}</p>
+                  </div>
+                )}
+
+                {/* Chat container */}
+                <div className="card h-[60vh] flex flex-col">
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 custom-scrollbar">
+                    {chatMessages.length === 0 && (
+                      <div className="text-sm text-foreground-muted text-center py-8">No messages yet. Start the conversation.</div>
+                    )}
+                    {chatMessages.map((msg, idx) => (
                       <div
-                        className={`max-w-[75%] rounded-lg px-3 py-2 text-sm shadow message-pop ${
-                          msg.role === 'user'
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-800 text-gray-200'
-                        }`}
+                        key={idx}
+                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                       >
-                        {msg.content}
+                        <div
+                          className={`max-w-[75%] rounded-xl px-4 py-2.5 text-sm message-pop ${
+                            msg.role === 'user'
+                              ? 'bg-gradient-to-r from-primary to-primary-dark text-background'
+                              : 'bg-background-secondary text-foreground border border-surface-border'
+                          }`}
+                        >
+                          {msg.content}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-                <form
-                  className="border-t border-gray-700 p-3 flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const value = chatInput.trim();
-                    if (!value) return;
-                    setChatMessages((prev) => [
-                      ...prev,
-                      { role: 'user', content: value },
-                      { role: 'assistant', content: 'AI response placeholder. Integration coming soon.' },
-                    ]);
-                    setChatInput('');
-                  }}
-                >
-                  <input
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    className="flex-1 border border-gray-600 rounded-lg px-3 py-2 text-sm font-medium text-white bg-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    placeholder="Type your question..."
-                  />
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-semibold"
+                    ))}
+                  </div>
+                  <form
+                    className="border-t border-surface-border p-4 flex gap-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const value = chatInput.trim();
+                      if (!value) return;
+                      setChatMessages((prev) => [
+                        ...prev,
+                        { role: 'user', content: value },
+                        { role: 'assistant', content: 'AI response coming soon. Integration in progress.' },
+                      ]);
+                      setChatInput('');
+                    }}
                   >
-                    Send
-                  </button>
-                </form>
+                    <input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      className="flex-1 px-4 py-2.5 rounded-xl input-field text-sm"
+                      placeholder="Type your question..."
+                    />
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 rounded-xl btn-primary text-sm"
+                    >
+                      Send
+                    </button>
+                  </form>
+                </div>
               </div>
-            </div>
-          ) : hasPermission === null ? (
-            <div className="text-center animate-fade-in-down">
-              <h1 className="text-4xl font-bold text-white mb-4">
-                Requesting Permissions...
-              </h1>
-              <p className="text-gray-300">
-                Please allow access to your camera and microphone
-              </p>
-            </div>
-          ) : hasPermission && !permissionError ? (
-            <div className="w-full max-w-xl space-y-6 animate-fade-in-down">
-              <div className="text-center">
-                <h1 className="text-3xl font-bold text-white mb-2">
-                  {!isRecording && 'Ready to Record'}
-                  {isRecording && !isPaused && 'Recording in progress...'}
-                  {isRecording && isPaused && 'Recording paused'}
+            ) : hasPermission === null ? (
+              <div className="text-center animate-fade-in-down">
+                <div className="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+                <h1 className="text-3xl font-display font-bold text-foreground mb-3">
+                  Requesting Permissions
                 </h1>
-                <p className="text-gray-300">
-                  {!isRecording && 'Check your camera position and audio quality'}
+                <p className="text-foreground-muted">
+                  Please allow access to your camera and microphone
                 </p>
               </div>
-
-              {/* Video Preview */}
-              <div className="relative w-full bg-black rounded-lg overflow-hidden shadow-lg">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full aspect-video object-cover"
-                />
-                {isRecording && (
-                  <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-600 px-3 py-2 rounded-lg">
-                    <div className="w-3 h-3 bg-red-200 rounded-full animate-pulse" />
-                    <span className="text-white font-semibold text-sm">
-                      Recording
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Controls */}
-              <div className="flex justify-center gap-4">
-                {!isRecording ? (
-                  <button
-                    onClick={handleStartRecording}
-                    className="px-8 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
-                  >
-                    Start Recording
-                  </button>
-                ) : (
-                  <>
-                    {!isPaused ? (
-                      <button
-                        onClick={handlePauseRecording}
-                        className="px-8 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors font-semibold"
-                      >
-                        Pause
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleResumeRecording}
-                        className="px-8 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors font-semibold"
-                      >
-                        Resume
-                      </button>
-                    )}
-                    <button
-                      onClick={handleStopRecording}
-                      className="px-8 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-semibold"
-                    >
-                      Stop Recording
-                    </button>
-                  </>
-                )}
-              </div>
-
-              <p className="text-center text-sm text-gray-500">
-                {liveKitConnected
-                  ? 'Your audio is being transcribed in real-time by the AI agent.'
-                  : 'Your feed will be saved when you stop.'}
-              </p>
-            </div>
-          ) : (
-            <div className="w-full max-w-xl animate-fade-in-down">
-              <div className="bg-red-50 border-2 border-red-400 rounded-lg p-8 text-center">
-                <h1 className="text-3xl font-bold text-red-800 mb-4">
-                  Permission Denied
-                </h1>
-                <p className="text-red-700 mb-6 text-lg">{permissionError}</p>
-
-                {cameraError && (
-                  <div className="mb-4 text-red-600 font-semibold">
-                    Camera not detected
-                  </div>
-                )}
-                {micError && (
-                  <div className="mb-4 text-red-600 font-semibold">
-                    Microphone not detected
-                  </div>
-                )}
-
-                <div className="bg-white rounded-lg p-6 mb-6 text-left">
-                  <h3 className="font-bold text-gray-900 mb-3">
-                    How to fix this:
-                  </h3>
-                  <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                    <li>Check your browser's permission settings</li>
-                    <li>
-                      Look for a camera/microphone icon in the address bar
-                    </li>
-                    <li>Click it and select "Allow" for this site</li>
-                    <li>Refresh the page and try again</li>
-                    <li>
-                      Alternatively, check your system's privacy settings for this
-                      browser
-                    </li>
-                  </ol>
-                </div>
-
-                <div className="flex gap-4 justify-center">
-                  <button
-                    onClick={() => window.location.reload()}
-                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-300 transform hover:scale-105 font-semibold"
-                  >
-                    Try Again
-                  </button>
-                  <Link
-                    href="/home"
-                    className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all duration-300 transform hover:scale-105 font-semibold"
-                  >
-                    Go Back
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT SIDE - React Flow Board in Modal */}
-        <div
-          className={`transition-all duration-700 ease-out overflow-hidden flex items-center justify-center ${
-            showFlowBoard ? 'w-1/2 opacity-100' : 'w-0 opacity-0'
-          }`}
-        >
-          {showFlowBoard && (
-            <div className="w-full h-full flex items-center justify-center p-6">
-              <div className="w-full h-full shadow-2xl rounded-2xl overflow-hidden border border-gray-700 bg-gray-900 flex flex-col">
-                <div className="px-6 py-4 border-b border-gray-700 bg-gradient-to-r from-blue-900 to-purple-900">
-                  <h2 className="text-xl font-bold text-white">Live Processing</h2>
-                  <p className="text-sm text-gray-300">Visualization of content being processed
-                    {agentReady
-                    ? 'Concepts appear as the AI processes your speech'
-                    : liveKitConnected
-                      ? 'Waiting for agent to connect...'
-                      : 'Connect to see real-time concepts'}
+            ) : hasPermission && !permissionError ? (
+              <div className="w-full max-w-xl space-y-6 animate-fade-in-down">
+                <div className="text-center">
+                  <h1 className="text-3xl font-display font-bold text-foreground mb-2">
+                    {!isRecording && 'Ready to Record'}
+                    {isRecording && !isPaused && 'Recording in Progress'}
+                    {isRecording && isPaused && 'Recording Paused'}
+                  </h1>
+                  <p className="text-foreground-muted">
+                    {!isRecording && 'Check your camera position and audio quality'}
                   </p>
                 </div>
-                <div className="flex-1 bg-gray-800">
-                  <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    fitView
-                    attributionPosition="bottom-left"
-                  />
-                </div>
-                {/* Live transcript preview - inside card */}
-                {transcripts.length > 0 && (
-                  <div className="px-4 py-3 border-t border-gray-700 bg-gray-900 max-h-20 overflow-y-auto">
-                    <p className="text-xs text-gray-400 font-medium mb-1">Latest transcript:</p>
-                    <p className="text-sm text-gray-300">{transcripts[transcripts.length - 1]}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Confirmation Modal */}
-      {showConfirmation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fade-in-down">
-          <div className="bg-white rounded-lg p-8 max-w-md shadow-lg animate-fade-in-down">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              End Recording?
-            </h2>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to end this feed? The recording will be saved.
-            </p>
-            <div className="flex gap-4 justify-end">
-              <button
-                onClick={cancelStopRecording}
-                className="px-6 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmStopRecording}
-                className="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-semibold"
-              >
-                End Feed
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Return Home Modal */}
-      {showHomeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 animate-fade-in-down">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-lg animate-fade-in-down space-y-4">
-            {homeModalMode === 'active' ? (
-              <>
-                <h2 className="text-xl font-bold text-gray-900">Leave and return home?</h2>
-                <p className="text-gray-700">
-                  The current recording will be lost if you leave now. Are you sure you want to return home?
-                </p>
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowHomeModal(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <Link
-                    href="/home"
-                    className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                  >
-                    Leave
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
-                <h2 className="text-xl font-bold text-gray-900">Save recording before leaving?</h2>
-                <p className="text-gray-700">Would you like to save your recording before returning home?</p>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700" htmlFor="recording-title">
-                    Recording title
-                  </label>
-                  <input
-                    id="recording-title"
-                    value={recordingTitle}
-                    onChange={(e) => setRecordingTitle(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. Lecture 1 - Intro"
+                {/* Video Preview */}
+                <div className="relative w-full rounded-2xl overflow-hidden shadow-card border border-surface-border">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full aspect-video object-cover bg-background-secondary"
                   />
-                  {recordingTitleError && (
-                    <p className="text-sm text-red-600">{recordingTitleError}</p>
+                  {isRecording && (
+                    <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/90 backdrop-blur-sm">
+                      <div className="w-2.5 h-2.5 bg-white rounded-full animate-pulse" />
+                      <span className="text-white font-semibold text-sm">REC</span>
+                    </div>
                   )}
                 </div>
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={() => setShowHomeModal(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <Link
-                    href="/home"
-                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-                  >
-                    Skip Saving
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!recordingTitle.trim()) {
-                        setRecordingTitleError('Please enter a title before saving.');
-                        return;
-                      }
-                      setRecordingTitleError('');
-                      setShowHomeModal(false);
-                      router.push('/home');
-                    }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Save & Return
-                  </button>
+
+                {/* Controls */}
+                <div className="flex justify-center gap-4">
+                  {!isRecording ? (
+                    <button
+                      onClick={handleStartRecording}
+                      className="px-8 py-3 rounded-xl btn-primary font-semibold flex items-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" />
+                      </svg>
+                      Start Recording
+                    </button>
+                  ) : (
+                    <>
+                      {!isPaused ? (
+                        <button
+                          onClick={handlePauseRecording}
+                          className="px-6 py-3 rounded-xl bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 transition-colors font-semibold flex items-center gap-2"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <rect x="6" y="4" width="4" height="16" rx="1" />
+                            <rect x="14" y="4" width="4" height="16" rx="1" />
+                          </svg>
+                          Pause
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleResumeRecording}
+                          className="px-6 py-3 rounded-xl bg-accent/10 border border-accent/20 text-accent hover:bg-accent/20 transition-colors font-semibold flex items-center gap-2"
+                        >
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                          Resume
+                        </button>
+                      )}
+                      <button
+                        onClick={handleStopRecording}
+                        className="px-6 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors font-semibold flex items-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                          <rect x="6" y="6" width="12" height="12" rx="2" />
+                        </svg>
+                        Stop
+                      </button>
+                    </>
+                  )}
                 </div>
-              </>
+
+                <p className="text-center text-sm text-foreground-muted">
+                  {liveKitConnected
+                    ? 'Your audio is being transcribed in real-time'
+                    : 'Your session will be saved when you stop'}
+                </p>
+              </div>
+            ) : (
+              <div className="w-full max-w-xl animate-fade-in-down">
+                <div className="card p-8 border-red-500/20">
+                  <div className="text-center mb-6">
+                    <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <h1 className="text-2xl font-display font-bold text-foreground mb-2">
+                      Permission Required
+                    </h1>
+                    <p className="text-foreground-muted">{permissionError}</p>
+                  </div>
+
+                  {(cameraError || micError) && (
+                    <div className="mb-6 flex justify-center gap-4">
+                      {cameraError && (
+                        <span className="px-3 py-1 rounded-full bg-red-500/10 text-red-400 text-sm">Camera not detected</span>
+                      )}
+                      {micError && (
+                        <span className="px-3 py-1 rounded-full bg-red-500/10 text-red-400 text-sm">Microphone not detected</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="bg-background-secondary rounded-xl p-5 mb-6">
+                    <h3 className="font-semibold text-foreground mb-3">How to fix this:</h3>
+                    <ol className="list-decimal list-inside space-y-2 text-foreground-muted text-sm">
+                      <li>Check your browser&apos;s permission settings</li>
+                      <li>Look for a camera/microphone icon in the address bar</li>
+                      <li>Click it and select &quot;Allow&quot; for this site</li>
+                      <li>Refresh the page and try again</li>
+                    </ol>
+                  </div>
+
+                  <div className="flex gap-4 justify-center">
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-6 py-2.5 rounded-xl btn-primary font-semibold"
+                    >
+                      Try Again
+                    </button>
+                    <Link
+                      href="/home"
+                      className="px-6 py-2.5 rounded-xl glass text-foreground-muted hover:text-foreground transition-colors font-semibold"
+                    >
+                      Go Back
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT SIDE - React Flow Board */}
+          <div
+            className={`transition-all duration-700 ease-out overflow-hidden flex items-center justify-center ${
+              showFlowBoard ? 'w-1/2 opacity-100' : 'w-0 opacity-0'
+            }`}
+          >
+            {showFlowBoard && (
+              <div className="w-full h-full flex items-center justify-center p-6">
+                <div className="w-full h-full card overflow-hidden flex flex-col">
+                  <div className="px-6 py-4 border-b border-surface-border bg-background-secondary">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-lg font-display font-bold text-foreground">Live Processing</h2>
+                        <p className="text-sm text-foreground-muted">
+                          {agentReady
+                            ? 'Concepts appear as AI processes speech'
+                            : liveKitConnected
+                              ? 'Waiting for agent...'
+                              : 'Connect to see real-time concepts'}
+                        </p>
+                      </div>
+                      {agentReady && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10">
+                          <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                          <span className="text-xs text-primary font-medium">Live</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 bg-background">
+                    <ReactFlow
+                      nodes={nodes}
+                      edges={edges}
+                      fitView
+                      attributionPosition="bottom-left"
+                    />
+                  </div>
+                  {/* Live transcript preview */}
+                  {transcripts.length > 0 && (
+                    <div className="px-4 py-3 border-t border-surface-border bg-background-secondary max-h-24 overflow-y-auto custom-scrollbar">
+                      <p className="text-xs text-foreground-muted font-medium mb-1 uppercase tracking-wider">Latest transcript</p>
+                      <p className="text-sm text-foreground">{transcripts[transcripts.length - 1]}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>
-      )}
-    </div>
+
+        {/* Confirmation Modal */}
+        {showConfirmation && (
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in-scale">
+            <div className="card p-8 max-w-md w-full mx-4">
+              <h2 className="text-2xl font-display font-bold text-foreground mb-3">
+                End Recording?
+              </h2>
+              <p className="text-foreground-muted mb-6">
+                Are you sure you want to end this session? Your recording will be saved.
+              </p>
+              <div className="flex gap-4 justify-end">
+                <button
+                  onClick={cancelStopRecording}
+                  className="px-5 py-2.5 rounded-xl glass text-foreground-muted hover:text-foreground transition-colors font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmStopRecording}
+                  className="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors font-semibold"
+                >
+                  End Session
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Return Home Modal */}
+        {showHomeModal && (
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in-scale">
+            <div className="card p-6 w-full max-w-lg mx-4">
+              {homeModalMode === 'active' ? (
+                <>
+                  <h2 className="text-xl font-display font-bold text-foreground mb-2">Leave and return home?</h2>
+                  <p className="text-foreground-muted mb-6">
+                    The current recording will be lost if you leave now.
+                  </p>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setShowHomeModal(false)}
+                      className="px-4 py-2.5 rounded-xl glass text-foreground-muted hover:text-foreground transition-colors font-medium"
+                    >
+                      Cancel
+                    </button>
+                    <Link
+                      href="/home"
+                      className="px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors font-medium"
+                    >
+                      Leave
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-display font-bold text-foreground mb-2">Save before leaving?</h2>
+                  <p className="text-foreground-muted mb-4">Would you like to save your recording?</p>
+                  <div className="space-y-2 mb-6">
+                    <label className="text-xs font-medium text-foreground-muted uppercase tracking-wider" htmlFor="recording-title">
+                      Recording title
+                    </label>
+                    <input
+                      id="recording-title"
+                      value={recordingTitle}
+                      onChange={(e) => setRecordingTitle(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl input-field text-sm"
+                      placeholder="e.g. Lecture 1 - Intro"
+                    />
+                    {recordingTitleError && (
+                      <p className="text-sm text-red-400">{recordingTitleError}</p>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setShowHomeModal(false)}
+                      className="px-4 py-2.5 rounded-xl glass text-foreground-muted hover:text-foreground transition-colors font-medium"
+                    >
+                      Cancel
+                    </button>
+                    <Link
+                      href="/home"
+                      className="px-4 py-2.5 rounded-xl bg-foreground-muted/20 text-foreground-muted hover:bg-foreground-muted/30 transition-colors font-medium"
+                    >
+                      Skip
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!recordingTitle.trim()) {
+                          setRecordingTitleError('Please enter a title before saving.');
+                          return;
+                        }
+                        setRecordingTitleError('');
+                        setShowHomeModal(false);
+                        router.push('/home');
+                      }}
+                      className="px-4 py-2.5 rounded-xl btn-primary font-medium"
+                    >
+                      Save & Return
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </ProtectedRoute>
   );
 }
