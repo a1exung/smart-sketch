@@ -1,0 +1,21 @@
+# LiveKit Agents Framework
+# This is the main framework that lets us build agents that join LiveKit rooms
+livekit-agents>=0.8.0
+
+# Deepgram Plugin - Speech-to-Text
+# Converts audio to text in real-time
+# You need a Deepgram API key: https://deepgram.com (free tier available)
+livekit-plugins-deepgram>=0.6.0
+
+# OpenAI Plugin - For concept extraction
+# Uses GPT to analyze transcripts and extract key concepts
+# You need an OpenAI API key: https://platform.openai.com
+livekit-plugins-openai>=0.8.0
+
+# Silero Plugin - Voice Activity Detection (optional but recommended)
+# Helps detect when someone is speaking vs silence
+# This improves transcription accuracy
+livekit-plugins-silero>=0.6.0
+
+# Python dotenv - For loading environment variables from .env file
+python-dotenv>=1.0.0
