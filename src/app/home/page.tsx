@@ -4,10 +4,13 @@ import Link from "next/link";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
+import NeuralNetworkBackground from "@/components/NeuralNetworkBackground";
 
 export default function HomePage() {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const router = useRouter();
+
+  const firstName = user?.user_metadata?.first_name || 'there';
 
   const handleLogout = async () => {
     await signOut();
@@ -16,7 +19,8 @@ export default function HomePage() {
 
   return (
     <ProtectedRoute>
-      <div className="relative w-full min-h-screen bg-gray-50 overflow-hidden">
+      <NeuralNetworkBackground />
+      <div className="relative z-10 w-full min-h-screen bg-transparent overflow-hidden">
         {/* Logout - top right */}
         <div className="absolute top-6 right-6">
           <button
@@ -30,10 +34,10 @@ export default function HomePage() {
         {/* Welcome + Actions */}
         <div className="flex flex-col items-center justify-center min-h-screen px-4 text-center space-y-10">
           <div>
-            <h1 className="text-6xl md:text-8xl font-bold text-gray-800 animate-fade-in-down">
-              Welcome Back
+            <h1 className="text-6xl md:text-8xl font-bold text-white animate-fade-in-down">
+              Welcome Back, {firstName}!
             </h1>
-            <p className="text-xl md:text-2xl text-gray-600 mt-4 animate-fade-in-down">
+            <p className="text-xl md:text-2xl text-gray-200 mt-4 animate-fade-in-down">
               Ready to sketch your ideas?
             </p>
           </div>

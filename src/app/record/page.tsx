@@ -7,6 +7,7 @@ import ReactFlow, { Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { useAuth } from '@/lib/auth-context';
+import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
 
 export default function RecordPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -205,7 +206,8 @@ export default function RecordPage() {
 
   return (
     <ProtectedRoute>
-      <div className="relative w-full min-h-screen bg-gray-50 overflow-hidden">
+      <NeuralNetworkBackground />
+      <div className="relative z-10 w-full min-h-screen bg-transparent overflow-hidden">
       {/* Back Button - Top Left */}
       <div className="absolute top-6 left-6 z-20">
         <button
@@ -227,14 +229,14 @@ export default function RecordPage() {
           {showChat ? (
             <div className="w-full max-w-2xl space-y-6 animate-[fade-in-down_0.8s_ease-out] transition-transform duration-500 ease-out">
               <div className="text-center">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Chat</h1>
-                <p className="text-gray-600">Ask questions about the session. AI responses coming soon.</p>
+                <h1 className="text-3xl font-bold text-white mb-2">Chat</h1>
+                <p className="text-gray-300">Ask questions about the session. AI responses coming soon.</p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-lg border border-gray-200 h-[70vh] flex flex-col">
+              <div className="bg-gray-900 rounded-lg shadow-lg border border-gray-700 h-[70vh] flex flex-col">
                 <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
                   {chatMessages.length === 0 && (
-                    <div className="text-sm text-gray-500 text-center">No messages yet. Start the conversation.</div>
+                    <div className="text-sm text-gray-400 text-center">No messages yet. Start the conversation.</div>
                   )}
                   {chatMessages.map((msg, idx) => (
                     <div
@@ -245,7 +247,7 @@ export default function RecordPage() {
                         className={`max-w-[75%] rounded-lg px-3 py-2 text-sm shadow message-pop ${
                           msg.role === 'user'
                             ? 'bg-blue-500 text-white'
-                            : 'bg-gray-100 text-gray-900'
+                            : 'bg-gray-800 text-gray-200'
                         }`}
                       >
                         {msg.content}
@@ -254,7 +256,7 @@ export default function RecordPage() {
                   ))}
                 </div>
                 <form
-                  className="border-t border-gray-200 p-3 flex gap-2"
+                  className="border-t border-gray-700 p-3 flex gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
                     const value = chatInput.trim();
@@ -270,7 +272,7 @@ export default function RecordPage() {
                   <input
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 border border-gray-600 rounded-lg px-3 py-2 text-sm font-medium text-white bg-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     placeholder="Type your question..."
                   />
                   <button
@@ -284,20 +286,20 @@ export default function RecordPage() {
             </div>
           ) : hasPermission === null ? (
             <div className="text-center animate-fade-in-down">
-              <h1 className="text-4xl font-bold text-gray-900 mb-4">
+              <h1 className="text-4xl font-bold text-white mb-4">
                 Requesting Permissions...
               </h1>
-              <p className="text-gray-600">
+              <p className="text-gray-300">
                 Please allow access to your camera and microphone
               </p>
             </div>
           ) : hasPermission && !permissionError ? (
             <div className="w-full max-w-xl space-y-6 animate-fade-in-down">
               <div className="text-center">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                <h1 className="text-3xl font-bold text-white mb-2">
                   Recording
                 </h1>
-                <p className="text-gray-600">
+                <p className="text-gray-300">
                   {isRecording && !isPaused && 'Recording in progress...'}
                   {isRecording && isPaused && 'Recording paused'}
                   {!isRecording && 'Ready to record'}
