@@ -172,8 +172,8 @@ export default function RecordPage() {
     }
   }, [addConceptToMap]);
 
-  // Connect to LiveKit room
-  const connectToLiveKit = useCallback(async (mediaStream: MediaStream) => {
+  // Connect to LiveKit room (without publishing tracks)
+  const connectToLiveKit = useCallback(async () => {
     try {
       // Fetch token from our API
       const response = await fetch('/api/livekit/token?room=smartsketch-room&username=student');
@@ -204,30 +204,40 @@ export default function RecordPage() {
         }
       });
 
-      // Connect to room
+      // Connect to room (but don't publish tracks yet)
       await room.connect(livekitUrl, token);
       console.log('Connected to LiveKit room:', room.name);
-
-      // Publish our audio and video tracks
-      const audioTrack = mediaStream.getAudioTracks()[0];
-      const videoTrack = mediaStream.getVideoTracks()[0];
-
-      if (audioTrack) {
-        await room.localParticipant.publishTrack(audioTrack);
-        console.log('Published audio track');
-      }
-
-      if (videoTrack) {
-        await room.localParticipant.publishTrack(videoTrack);
-        console.log('Published video track');
-      }
-
       setLiveKitConnected(true);
 
     } catch (error) {
       console.error('LiveKit connection error:', error);
     }
   }, [handleAgentMessage]);
+
+  // Publish tracks to LiveKit (called when recording starts)
+  const publishTracksToLiveKit = useCallback(async (mediaStream: MediaStream) => {
+    if (!roomRef.current) {
+      console.error('Room not connected, cannot publish tracks');
+      return;
+    }
+
+    try {
+      const audioTrack = mediaStream.getAudioTracks()[0];
+      const videoTrack = mediaStream.getVideoTracks()[0];
+
+      if (audioTrack) {
+        await roomRef.current.localParticipant.publishTrack(audioTrack);
+        console.log('Published audio track');
+      }
+
+      if (videoTrack) {
+        await roomRef.current.localParticipant.publishTrack(videoTrack);
+        console.log('Published video track');
+      }
+    } catch (error) {
+      console.error('Failed to publish tracks:', error);
+    }
+  }, []);
 
   // Disconnect from LiveKit
   const disconnectFromLiveKit = useCallback(() => {
@@ -257,6 +267,9 @@ export default function RecordPage() {
         }
         setHasPermission(true);
         setPermissionError('');
+
+        // Connect to LiveKit in background (without publishing tracks)
+        connectToLiveKit();
 
       } catch (error) {
         setHasPermission(false);
@@ -346,8 +359,8 @@ export default function RecordPage() {
       nodeCounterRef.current = 0;
       setTranscripts([]);
 
-      // Connect to LiveKit to enable agent transcription
-      await connectToLiveKit(stream);
+      // Publish tracks to LiveKit (already connected in background)
+      await publishTracksToLiveKit(stream);
     }
   };
 
@@ -548,12 +561,26 @@ export default function RecordPage() {
                   {!isRecording ? (
                     <button
                       onClick={handleStartRecording}
-                      className="px-8 py-3 rounded-xl btn-primary font-semibold flex items-center gap-2"
+                      disabled={!agentReady}
+                      className={`px-8 py-3 rounded-xl font-semibold flex items-center gap-2 transition-all duration-300 ${
+                        agentReady
+                          ? 'btn-primary'
+                          : 'bg-surface-border text-foreground-muted cursor-not-allowed opacity-60'
+                      }`}
                     >
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="10" />
-                      </svg>
-                      Start Recording
+                      {agentReady ? (
+                        <>
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" />
+                          </svg>
+                          Start Recording
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          Connecting to AI...
+                        </>
+                      )}
                     </button>
                   ) : (
                     <>
@@ -593,9 +620,11 @@ export default function RecordPage() {
                 </div>
 
                 <p className="text-center text-sm text-foreground-muted">
-                  {liveKitConnected
-                    ? 'Your audio is being transcribed in real-time'
-                    : 'Your session will be saved when you stop'}
+                  {agentReady
+                    ? 'AI agent ready. Click Start Recording to begin.'
+                    : liveKitConnected
+                    ? 'Waiting for AI agent...'
+                    : 'Connecting to AI agent...'}
                 </p>
               </div>
             ) : (
