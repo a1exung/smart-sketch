@@ -10,12 +10,15 @@ import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant, 
 import { saveSession } from '@/lib/sessions-service';
 import { useAuth } from '@/lib/auth-context';
 import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
+import { findSimilarConcept } from '@/lib/concept-dedup';
 
 // Types for agent messages
 interface ConceptData {
+  id?: string;  // Unique ID from agent (e.g., "c1", "c2")
   label: string;
   type: 'main' | 'concept' | 'detail';
-  explanation: string;
+  explanation?: string;
+  parent?: string | null;  // Parent concept ID, or null for main topics
 }
 
 interface AgentMessage {
@@ -94,57 +97,172 @@ export default function RecordPage() {
 
   const [edges, setEdges] = useState<Edge[]>([]);
 
-  // Node counter for unique IDs
+  // Track node positions by ID for parent-child positioning
+  const nodePositionsRef = useRef<Map<string, { x: number; y: number; childCount: number }>>(
+    new Map([['center', { x: 250, y: 200, childCount: 0 }]])
+  );
   const nodeCounterRef = useRef(0);
 
-  // Add a new concept to the mind map
-  const addConceptToMap = useCallback((concept: ConceptData) => {
-    nodeCounterRef.current += 1;
-    const nodeId = `concept-${nodeCounterRef.current}`;
-
-    // Calculate position in a circular pattern around center
-    const angle = (nodeCounterRef.current * 0.8) % (2 * Math.PI);
-    const radius = 150 + (Math.floor(nodeCounterRef.current / 8) * 80);
-    const x = 250 + radius * Math.cos(angle);
-    const y = 200 + radius * Math.sin(angle);
-
-    // Colors based on concept type - updated for new theme
+  // Add multiple concepts to the mind map with proper hierarchy
+  const addConceptsToMap = useCallback((concepts: ConceptData[]) => {
+    // Colors based on concept type
     const colors = {
       main: { bg: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', border: '#0d9488', text: '#0c0f14' },
       concept: { bg: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', border: '#d97706', text: '#0c0f14' },
       detail: { bg: 'linear-gradient(135deg, #1a1f2b 0%, #12161e 100%)', border: 'rgba(255,255,255,0.1)', text: '#f0f2f5' },
     };
 
-    const color = colors[concept.type] || colors.concept;
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
 
-    const newNode: Node = {
-      id: nodeId,
-      data: { label: concept.label },
-      position: { x, y },
-      style: {
-        background: color.bg,
-        color: color.text,
-        border: `1px solid ${color.border}`,
-        borderRadius: '12px',
-        padding: '12px 16px',
-        fontSize: '12px',
-        fontWeight: '500',
-        maxWidth: '140px',
-        textAlign: 'center' as const,
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-      },
-    };
+    // Build map of existing nodes by label for deduplication
+    const existingNodesByLabel = new Map<string, string>();
+    setNodes((prevNodes) => {
+      prevNodes.forEach((node) => {
+        if (node.id !== 'center') {
+          // Extract label from node data
+          const nodeLabel = typeof node.data.label === 'string' ? node.data.label : node.data.label?.props?.children?.[0]?.props?.children || '';
+          if (nodeLabel) {
+            existingNodesByLabel.set(nodeLabel, node.id);
+          }
+        }
+      });
+      return prevNodes;
+    });
 
-    const newEdge: Edge = {
-      id: `edge-${nodeId}`,
-      source: 'center',
-      target: nodeId,
-      animated: true,
-      style: { stroke: '#14b8a6', strokeWidth: 2 },
-    };
+    // Map of original concept IDs to canonical (deduplicated) IDs
+    const conceptIdMapping = new Map<string, string>();
 
-    setNodes((prev) => [...prev, newNode]);
-    setEdges((prev) => [...prev, newEdge]);
+    // Sort concepts: main topics first, then concepts, then details
+    // This ensures parents are created before children
+    const sortedConcepts = [...concepts].sort((a, b) => {
+      const order = { main: 0, concept: 1, detail: 2 };
+      return order[a.type] - order[b.type];
+    });
+
+    sortedConcepts.forEach((concept) => {
+      const agentId = concept.id || `concept-${nodeCounterRef.current}`;
+
+      // Check if a similar concept already exists
+      const similarNodeId = findSimilarConcept(
+        concept.label,
+        Array.from(existingNodesByLabel.entries()).map(([label, id]) => ({ id, label })),
+        0.75 // 75% similarity threshold
+      );
+
+      if (similarNodeId) {
+        // Map this concept to the existing similar one
+        conceptIdMapping.set(agentId, similarNodeId);
+        console.log(`[DEDUP] Merged "${concept.label}" with existing "${similarNodeId}"`);
+        return;
+      }
+
+      // Check if we already have this exact node ID
+      if (nodePositionsRef.current.has(agentId) || similarNodeId) {
+        console.log(`[DEDUP] Skipped duplicate: ${agentId}`);
+        return;
+      }
+
+      nodeCounterRef.current += 1;
+      const nodeId = agentId;
+
+      // Map new concept ID
+      conceptIdMapping.set(agentId, nodeId);
+
+      // Determine parent node ID (use mapped ID if parent was deduplicated)
+      let parentId = 'center';
+      if (concept.parent) {
+        parentId = conceptIdMapping.get(concept.parent) || concept.parent;
+      } else if (concept.type === 'main') {
+        parentId = 'center';
+      }
+
+      // Get parent position
+      const parentPos = nodePositionsRef.current.get(parentId) || { x: 250, y: 200, childCount: 0 };
+
+      // Calculate position based on parent and hierarchy level
+      let x: number, y: number;
+      const childIndex = parentPos.childCount;
+
+      if (concept.type === 'main') {
+        // Main topics spread horizontally from center
+        const angle = (childIndex * Math.PI / 3) - Math.PI / 2; // Start from top
+        const radius = 180;
+        x = parentPos.x + radius * Math.cos(angle);
+        y = parentPos.y + radius * Math.sin(angle);
+      } else if (concept.type === 'concept') {
+        // Concepts branch outward from their parent
+        const baseAngle = Math.atan2(parentPos.y - 200, parentPos.x - 250);
+        const spread = Math.PI / 4; // 45 degree spread
+        const angle = baseAngle + (childIndex - parentPos.childCount / 2) * spread;
+        const radius = 140;
+        x = parentPos.x + radius * Math.cos(angle);
+        y = parentPos.y + radius * Math.sin(angle);
+      } else {
+        // Details branch from their parent concept
+        const baseAngle = Math.atan2(parentPos.y - 200, parentPos.x - 250);
+        const spread = Math.PI / 5;
+        const angle = baseAngle + (childIndex - 0.5) * spread;
+        const radius = 100;
+        x = parentPos.x + radius * Math.cos(angle);
+        y = parentPos.y + radius * Math.sin(angle);
+      }
+
+      // Update parent's child count
+      parentPos.childCount++;
+
+      // Store this node's position
+      nodePositionsRef.current.set(nodeId, { x, y, childCount: 0 });
+
+      const color = colors[concept.type] || colors.concept;
+
+      // Create node with explanation in data
+      newNodes.push({
+        id: nodeId,
+        data: {
+          label: (
+            <div className="text-center">
+              <div className="font-semibold">{concept.label}</div>
+              {concept.explanation && (
+                <div className="text-xs opacity-75 mt-1 line-clamp-2">{concept.explanation}</div>
+              )}
+            </div>
+          ),
+        },
+        position: { x, y },
+        draggable: true,
+        style: {
+          background: color.bg,
+          color: color.text,
+          border: `1px solid ${color.border}`,
+          borderRadius: concept.type === 'main' ? '16px' : '12px',
+          padding: concept.type === 'main' ? '14px 20px' : '10px 14px',
+          fontSize: concept.type === 'main' ? '14px' : '12px',
+          fontWeight: concept.type === 'main' ? '600' : '500',
+          maxWidth: concept.type === 'detail' ? '120px' : '160px',
+          boxShadow: concept.type === 'main'
+            ? '0 0 30px rgba(20, 184, 166, 0.3)'
+            : '0 4px 20px rgba(0, 0, 0, 0.3)',
+          cursor: 'grab',
+        },
+      });
+
+      // Create edge to parent
+      const edgeColor = concept.type === 'main' ? '#14b8a6' : concept.type === 'concept' ? '#f59e0b' : '#4b5563';
+      newEdges.push({
+        id: `edge-${nodeId}`,
+        source: parentId,
+        target: nodeId,
+        type: 'smoothstep',
+        animated: concept.type === 'main',
+        style: { stroke: edgeColor, strokeWidth: concept.type === 'main' ? 2 : 1.5 },
+      });
+    });
+
+    if (newNodes.length > 0) {
+      setNodes((prev) => [...prev, ...newNodes]);
+      setEdges((prev) => [...prev, ...newEdges]);
+    }
   }, []);
 
   // Handle messages from the agent
@@ -158,10 +276,9 @@ export default function RecordPage() {
         break;
 
       case 'concepts':
-        if (message.data.concepts) {
-          message.data.concepts.forEach((concept) => {
-            addConceptToMap(concept);
-          });
+        if (message.data.concepts && message.data.concepts.length > 0) {
+          // Add all concepts at once to properly handle parent-child relationships
+          addConceptsToMap(message.data.concepts);
         }
         if (message.data.transcript) {
           setTranscripts((prev) => [...prev, message.data.transcript!]);
@@ -174,7 +291,7 @@ export default function RecordPage() {
         }
         break;
     }
-  }, [addConceptToMap]);
+  }, [addConceptsToMap]);
 
   // Connect to LiveKit room (without publishing tracks)
   const connectToLiveKit = useCallback(async () => {
@@ -579,6 +696,7 @@ export default function RecordPage() {
       }]);
       setEdges([]);
       nodeCounterRef.current = 0;
+      nodePositionsRef.current = new Map([['center', { x: 250, y: 200, childCount: 0 }]]);
       setTranscripts([]);
 
       // Publish tracks to LiveKit (will reconnect if needed)
@@ -788,6 +906,7 @@ export default function RecordPage() {
                       }]);
                       setEdges([]);
                       nodeCounterRef.current = 0;
+                      nodePositionsRef.current = new Map([['center', { x: 250, y: 200, childCount: 0 }]]);
                       audioChunksRef.current = [];
                       isTracksPausedRef.current = false;
 

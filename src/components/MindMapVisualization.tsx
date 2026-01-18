@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import ReactFlow, {
   Node,
   Edge,
@@ -36,6 +36,188 @@ export default function MindMapVisualization({ concepts }: MindMapVisualizationP
     [setEdges]
   );
 
+  // Memoize the expensive layout calculation
+  const layoutData = useMemo(() => {
+    if (!concepts || concepts.length === 0) {
+      return { nodes: [], edges: [] };
+    }
+
+    // Estimate node dimensions based on content
+    const estimateNodeWidth = (concept: Concept): number => {
+      const labelLength = concept.label.length;
+      
+      if (concept.type === 'main') {
+        return Math.max(120, Math.min(200, labelLength * 8 + 40));
+      } else if (concept.type === 'concept') {
+        return Math.max(100, Math.min(180, labelLength * 7 + 30));
+      } else {
+        return Math.max(80, Math.min(160, labelLength * 6 + 25));
+      }
+    };
+
+    const estimateNodeHeight = (concept: Concept): number => {
+      if (concept.explanation) {
+        return concept.type === 'main' ? 70 : concept.type === 'concept' ? 60 : 50;
+      }
+      return concept.type === 'main' ? 50 : concept.type === 'concept' ? 40 : 35;
+    };
+
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
+    const childrenByParent = new Map<string, string[]>();
+    const widthCache = new Map<string, number>(); // Cache subtree widths
+
+    // First pass: build parent-child relationships
+    concepts.forEach((concept) => {
+      const nodeId = concept.id || concept.label;
+      const parentId = concept.parent;
+      
+      if (!childrenByParent.has(parentId || 'root')) {
+        childrenByParent.set(parentId || 'root', []);
+      }
+      childrenByParent.get(parentId || 'root')!.push(nodeId);
+    });
+
+    // Get node style
+    const getNodeStyle = (type: string): Record<string, string | number> => {
+      switch (type) {
+        case 'main':
+          return {
+            background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+            color: '#0c0f14',
+            border: 'none',
+            borderRadius: '12px',
+            padding: '12px 24px',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            boxShadow: '0 0 30px rgba(20, 184, 166, 0.3)',
+          };
+        case 'concept':
+          return {
+            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            color: '#0c0f14',
+            border: 'none',
+            borderRadius: '10px',
+            padding: '10px 18px',
+            fontSize: '14px',
+            fontWeight: '600',
+            boxShadow: '0 4px 20px rgba(245, 158, 11, 0.25)',
+          };
+        default:
+          return {
+            background: '#1a1f2b',
+            color: '#f0f2f5',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '8px',
+            padding: '8px 14px',
+            fontSize: '12px',
+            fontWeight: '500',
+            boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
+          };
+      }
+    };
+
+    // Calculate subtree widths with caching to avoid recalculation
+    const calculateSubtreeWidth = (nodeId: string | null): number => {
+      const key = nodeId || 'root';
+      if (widthCache.has(key)) {
+        return widthCache.get(key)!;
+      }
+
+      const children = childrenByParent.get(key) || [];
+      let width: number;
+
+      if (children.length === 0) {
+        const concept = concepts.find(c => (c.id || c.label) === nodeId);
+        width = concept ? estimateNodeWidth(concept) + 80 : 120;
+      } else {
+        let totalWidth = 0;
+        children.forEach((childId) => {
+          totalWidth += calculateSubtreeWidth(childId) + 60;
+        });
+        width = Math.max(totalWidth, 200);
+      }
+
+      widthCache.set(key, width);
+      return width;
+    };
+
+    // Position nodes using hierarchical layout
+    const positionNodes = (parentId: string | null, level: number, parentPos: { x: number; y: number } | null, leftBound: number) => {
+      const children = childrenByParent.get(parentId || 'root') || [];
+      if (children.length === 0) return leftBound;
+      
+      let currentX = leftBound;
+      const verticalGap = 200;
+      
+      children.forEach((childId, childIndex) => {
+        const concept = concepts.find(c => (c.id || c.label) === childId);
+        if (!concept) return;
+
+        const nodeWidth = estimateNodeWidth(concept);
+        const subtreeWidth = calculateSubtreeWidth(childId);
+        
+        let position = { x: 0, y: 0 };
+
+        if (level === 0) {
+          position = {
+            x: 150 + childIndex * 700,
+            y: 40,
+          };
+          currentX = position.x + subtreeWidth / 2;
+        } else if (parentPos) {
+          const subtreeCenter = currentX + subtreeWidth / 2;
+          position = {
+            x: subtreeCenter,
+            y: parentPos.y + verticalGap,
+          };
+          currentX += subtreeWidth + 80;
+        }
+
+        newNodes.push({
+          id: childId,
+          type: 'default',
+          position,
+          draggable: true,
+          data: {
+            label: (
+              <div>
+                <div className="font-semibold">{concept.label}</div>
+                {concept.explanation && (
+                  <div className="text-xs mt-1 opacity-75">{concept.explanation}</div>
+                )}
+              </div>
+            ),
+          },
+          style: {
+            ...getNodeStyle(concept.type),
+            cursor: 'grab',
+          },
+        });
+
+        if (concept.parent && parentPos) {
+          newEdges.push({
+            id: `edge-${concept.parent}-${childId}`,
+            source: concept.parent,
+            target: childId,
+            type: 'smoothstep',
+            animated: true,
+            style: { stroke: '#14b8a6', strokeWidth: 2 },
+          });
+        }
+
+        const nextLeftBound = level === 0 ? 150 + (childIndex + 1) * 700 : currentX - subtreeWidth;
+        positionNodes(childId, level + 1, position, nextLeftBound);
+      });
+      
+      return currentX;
+    };
+
+    positionNodes(null, 0, null, 0);
+
+    return { nodes: newNodes, edges: newEdges };
+  }, [concepts]); // Only recalculate when concepts change
+
   useEffect(() => {
     if (!concepts || concepts.length === 0) {
       setNodes([]);
@@ -43,118 +225,9 @@ export default function MindMapVisualization({ concepts }: MindMapVisualizationP
       return;
     }
 
-    // Convert concepts to nodes and edges
-    const newNodes: Node[] = [];
-    const newEdges: Edge[] = [];
-    const nodeMap = new Map<string, { x: number; y: number; level: number }>();
-
-    // Calculate positions based on hierarchy
-    let mainCount = 0;
-    let conceptCount = 0;
-    let detailCount = 0;
-
-    concepts.forEach((concept, index) => {
-      const nodeId = concept.id || `node-${index}`;
-      let position = { x: 0, y: 0 };
-      let level = 0;
-      const nodeType = 'default';
-      let style: Record<string, string | number> = {};
-
-      if (concept.type === 'main') {
-        // Main topics in center
-        position = { x: 400, y: 50 + mainCount * 150 };
-        level = 0;
-        mainCount++;
-        style = {
-          background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
-          color: '#0c0f14',
-          border: 'none',
-          borderRadius: '12px',
-          padding: '12px 24px',
-          fontSize: '16px',
-          fontWeight: 'bold',
-          boxShadow: '0 0 30px rgba(20, 184, 166, 0.3)',
-        };
-      } else if (concept.type === 'concept') {
-        // Concepts radiate from main
-        const angle = (conceptCount * Math.PI * 2) / Math.max(concepts.filter(c => c.type === 'concept').length, 1);
-        position = {
-          x: 400 + Math.cos(angle) * 200,
-          y: 200 + Math.sin(angle) * 150,
-        };
-        level = 1;
-        conceptCount++;
-        style = {
-          background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-          color: '#0c0f14',
-          border: 'none',
-          borderRadius: '10px',
-          padding: '10px 18px',
-          fontSize: '14px',
-          fontWeight: '600',
-          boxShadow: '0 4px 20px rgba(245, 158, 11, 0.25)',
-        };
-      } else {
-        // Details branch from concepts
-        const parentId = concept.parent;
-        const parentPos = nodeMap.get(parentId || '');
-        if (parentPos) {
-          position = {
-            x: parentPos.x + (detailCount % 2 === 0 ? 150 : -150),
-            y: parentPos.y + 100 + Math.floor(detailCount / 2) * 80,
-          };
-        } else {
-          position = { x: 200 + detailCount * 150, y: 400 };
-        }
-        level = 2;
-        detailCount++;
-        style = {
-          background: '#1a1f2b',
-          color: '#f0f2f5',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '8px',
-          padding: '8px 14px',
-          fontSize: '12px',
-          fontWeight: '500',
-          boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
-        };
-      }
-
-      nodeMap.set(nodeId, { x: position.x, y: position.y, level });
-
-      newNodes.push({
-        id: nodeId,
-        type: nodeType,
-        position,
-        data: {
-          label: (
-            <div>
-              <div className="font-semibold">{concept.label}</div>
-              {concept.explanation && (
-                <div className="text-xs mt-1 opacity-75">{concept.explanation}</div>
-              )}
-            </div>
-          ),
-        },
-        style,
-      });
-
-      // Create edges to parent
-      if (concept.parent) {
-        newEdges.push({
-          id: `edge-${concept.parent}-${nodeId}`,
-          source: concept.parent,
-          target: nodeId,
-          type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#14b8a6', strokeWidth: 2 },
-        });
-      }
-    });
-
-    setNodes(newNodes);
-    setEdges(newEdges);
-  }, [concepts, setNodes, setEdges]);
+    setNodes(layoutData.nodes);
+    setEdges(layoutData.edges);
+  }, [layoutData, setNodes, setEdges]);
 
   if (!concepts || concepts.length === 0) {
     return (
@@ -182,6 +255,7 @@ export default function MindMapVisualization({ concepts }: MindMapVisualizationP
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        nodesDraggable={true}
         fitView
         attributionPosition="bottom-right"
       >

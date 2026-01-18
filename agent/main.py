@@ -60,7 +60,7 @@ from livekit.plugins import deepgram
 import openai as openai_client
 
 # How often to batch transcripts and extract concepts (in seconds)
-BATCH_INTERVAL_SECONDS = 10
+BATCH_INTERVAL_SECONDS = 5
 
 
 class TranscriptProcessor:
@@ -90,77 +90,162 @@ class TranscriptProcessor:
 
         # Track when we last processed a batch
         self.last_batch_time = datetime.now()
+        
+        # Track if a batch is currently being processed to avoid race conditions
+        self.is_processing = False
 
     def add_transcript(self, text: str):
         """
         Called every time Deepgram returns some transcribed text.
-        We add it to our buffer and check if 30 seconds have passed.
+        We add it to our buffer and check if time to process.
         """
         if not text.strip():
             return
 
         self.transcript_buffer.append(text)
         self.full_transcript.append(text)
+        
+        buffer_length = sum(len(t) for t in self.transcript_buffer)
+        print(f"[TRANSCRIPT ADDED] '{text}' - buffer now has {buffer_length} chars, is_processing={self.is_processing}")
 
         # Check if it's time to process a batch
-        time_since_last_batch = (datetime.now() - self.last_batch_time).seconds
-        if time_since_last_batch >= BATCH_INTERVAL_SECONDS:
+        # Only trigger if not already processing to avoid race conditions
+        if self.is_processing:
+            print(f"[BATCH] Skipping trigger - already processing")
+            return
+            
+        time_since_last_batch = (datetime.now() - self.last_batch_time).total_seconds()
+        
+        # Process when either:
+        # 1. We have enough time passed (BATCH_INTERVAL_SECONDS) with some content
+        # 2. We have a reasonable amount of text accumulated (>200 chars - reduced from 300)
+        should_process = (time_since_last_batch >= BATCH_INTERVAL_SECONDS and buffer_length > 20) or buffer_length > 200
+        
+        if should_process:
+            print(f"[BATCH] Triggered: time={time_since_last_batch:.1f}s, length={buffer_length} chars")
             # Schedule the batch processing (don't block the transcript collection)
             asyncio.create_task(self.process_batch())
+        else:
+            print(f"[BATCH] Not ready: time={time_since_last_batch:.1f}s (need {BATCH_INTERVAL_SECONDS}s), length={buffer_length} chars")
 
     async def process_batch(self):
         """
-        Takes all the transcript pieces collected in the last 30 seconds,
+        Takes all the transcript pieces collected in the last 5 seconds,
         combines them, sends to OpenAI for concept extraction, and
         sends the results back to the React app.
         """
-        if not self.transcript_buffer:
-            return
-
-        # Combine all transcript pieces into one string
-        # Example: "Hello class today we discuss photosynthesis"
-        batch_text = " ".join(self.transcript_buffer)
-
-        # Clear the buffer for the next batch
-        self.transcript_buffer = []
-        self.last_batch_time = datetime.now()
-
-        print(f"[BATCH] Processing {len(batch_text)} characters of transcript")
-
+        # Set flag to prevent duplicate batches
+        self.is_processing = True
+        print(f"[BATCH] Starting process_batch - buffer has {sum(len(t) for t in self.transcript_buffer)} chars")
+        
         try:
+            if not self.transcript_buffer:
+                print(f"[BATCH] Buffer is empty, skipping")
+                return
+
+            # Combine all transcript pieces into one string
+            # Example: "Hello class today we discuss photosynthesis"
+            batch_text = " ".join(self.transcript_buffer)
+
+            # Clear the buffer for the next batch
+            self.transcript_buffer = []
+            self.last_batch_time = datetime.now()
+
+            print(f"[BATCH] Processing {len(batch_text)} characters of transcript: {batch_text[:100]}...")
+
             # Ask OpenAI to extract concepts from the transcript
             concepts = await self.extract_concepts(batch_text)
+            print(f"[BATCH] OpenAI returned {len(concepts)} concepts")
 
             # Send concepts back to the React app via Data Channel
             await self.send_to_frontend(concepts, batch_text)
+            
+            print(f"[BATCH] Completed - extracted {len(concepts)} concepts")
 
         except Exception as e:
             print(f"[ERROR] Failed to process batch: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            # Always reset the flag
+            self.is_processing = False
+            print(f"[BATCH] Completed, is_processing reset to False")
 
     async def extract_concepts(self, transcript: str) -> List[dict]:
         """
-        Sends the transcript to OpenAI and asks it to extract key concepts.
+        Sends the transcript to OpenAI and asks it to extract key concepts
+        with rich hierarchical parent-child relationships for complex mind maps.
 
-        Returns a list of concepts like:
+        Returns a list of concepts with proper parent-child relationships where:
+        - Multiple main topics can exist independently
+        - Concepts can branch off other concepts (not just main topics)
+        - Details can connect to any level
+        - Creates a true tree structure rather than a flat fan
+
+        Example:
         [
-            {"label": "Photosynthesis", "type": "main", "explanation": "Process plants use..."},
-            {"label": "Chlorophyll", "type": "concept", "explanation": "Green pigment..."},
+            {"id": "c1", "label": "Photosynthesis", "type": "main", "explanation": "...", "parent": null},
+            {"id": "c2", "label": "Light Reactions", "type": "concept", "explanation": "...", "parent": "c1"},
+            {"id": "c3", "label": "Dark Reactions", "type": "concept", "explanation": "...", "parent": "c1"},
+            {"id": "c4", "label": "Chlorophyll", "type": "detail", "explanation": "...", "parent": "c2"},
+            {"id": "c5", "label": "Calvin Cycle", "type": "detail", "explanation": "...", "parent": "c3"},
+            {"id": "c6", "label": "CO2 Fixation", "type": "detail", "explanation": "...", "parent": "c5"}
         ]
         """
 
         # The prompt that tells OpenAI what to do
-        prompt = f"""You are an educational assistant analyzing a lecture transcript.
-Extract the key concepts mentioned and return them as a JSON array.
+        prompt = f"""You are an expert educational assistant creating a RICH HIERARCHICAL concept map from a lecture transcript.
 
-Each concept should have:
-- "label": Short name (1-4 words)
-- "type": One of "main" (core topic), "concept" (supporting idea), or "detail" (specific fact)
-- "explanation": Brief explanation (1-2 sentences)
+Your task: Extract key concepts and organize them into a complex tree structure showing how ideas relate to each other.
+NOT a simple flat diagram - create REAL depth with branches from branches.
 
-Return ONLY valid JSON array, no other text. Example:
-[{{"label": "Photosynthesis", "type": "main", "explanation": "Process by which plants convert light to energy"}}]
+CRITICAL RULES:
+1. Identify the MAIN TOPIC(S) - these are broad subjects with no parent
+2. Create MULTIPLE LEVELS of supporting concepts (not just 2 levels)
+3. Concepts should branch off OTHER CONCEPTS when that's the real relationship
+4. Build a TRUE TREE structure with meaningful hierarchies
+5. Each concept MUST have a unique "id" (c1, c2, c3, etc.)
+6. Each concept (except main topics) MUST have a "parent" field pointing to its actual parent's id
+7. Main topics have "parent": null
 
-Transcript:
+Each concept must have:
+- "id": Unique identifier (c1, c2, c3...)
+- "label": Specific term (1-4 words) - domain terms, not generic words
+- "type": "main" (core topic), "concept" (intermediate idea), or "detail" (specific fact/example)
+- "explanation": Clear 1-2 sentence explanation of what this is
+- "parent": Parent concept's id (or null if main topic)
+
+CRITICAL - CREATE DEPTH:
+- If Light Reactions contains Electron Transport, make Electron Transport the parent of specific proteins
+- If Calvin Cycle has phases, those phases should branch from it
+- Build multiple levels: Main → Sub-concepts → Details → Sub-details
+- Don't limit to just 3 levels - go deeper when appropriate
+
+EXAMPLES OF GOOD STRUCTURE:
+- Photosynthesis (main)
+  - Light Reactions (concept, parent=Photosynthesis)
+    - Electron Transport (detail, parent=Light Reactions)
+      - ATP Synthase (detail, parent=Electron Transport)
+    - Thylakoid (detail, parent=Light Reactions)
+
+QUALITY REQUIREMENTS:
+- Extract 4-8 concepts per batch for good complexity
+- Focus on DOMAIN-SPECIFIC terms (formulas, equipment, named processes)
+- Avoid generic words unless they are the actual topic
+- Create meaningful connections showing HOW concepts relate
+- If concept A is part of concept B, then A's parent is B
+
+Return ONLY valid JSON array with no markdown formatting:
+[
+  {{"id": "c1", "label": "Photosynthesis", "type": "main", "explanation": "Process by which plants convert light into chemical energy stored in glucose", "parent": null}},
+  {{"id": "c2", "label": "Light-Dependent Reactions", "type": "concept", "explanation": "Reactions in thylakoid membrane that capture light energy and produce ATP and NADPH", "parent": "c1"}},
+  {{"id": "c3", "label": "Electron Transport Chain", "type": "detail", "explanation": "Series of protein complexes that transfer electrons and pump protons to create energy gradient", "parent": "c2"}},
+  {{"id": "c4", "label": "Photosystem II", "type": "detail", "explanation": "Protein complex that absorbs light and splits water molecules", "parent": "c2"}},
+  {{"id": "c5", "label": "Light-Independent Reactions", "type": "concept", "explanation": "Calvin Cycle reactions in stroma that use ATP and NADPH to fix CO2 into glucose", "parent": "c1"}},
+  {{"id": "c6", "label": "Carbon Fixation", "type": "detail", "explanation": "First phase of Calvin Cycle where CO2 is attached to RuBP", "parent": "c5"}}
+]
+
+Transcript to analyze:
 {transcript}"""
 
         try:
@@ -168,11 +253,11 @@ Transcript:
             response = await self.openai.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You extract educational concepts from lecture transcripts. Return only valid JSON arrays."},
+                    {"role": "system", "content": "You are an expert at creating hierarchical concept maps from educational content. Extract specific domain concepts and organize them into meaningful parent-child relationships. Return only valid JSON arrays."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=500
+                temperature=0.5,  # Lower temp for more consistent structure
+                max_tokens=800    # More tokens for hierarchical data
             )
 
             # Get the response text
@@ -260,6 +345,9 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     print(f"[AGENT] Connected to room: {ctx.room.name}")
+    print(f"[AGENT] Remote participants: {len(ctx.room.remote_participants)}")
+    for participant in ctx.room.remote_participants.values():
+        print(f"[AGENT]   - {participant.identity}: {len(participant.track_publications)} tracks")
 
     # Create our transcript processor
     processor = TranscriptProcessor(ctx.room)
@@ -289,28 +377,63 @@ async def entrypoint(ctx: JobContext):
 
         async def process_audio():
             """Send audio frames to Deepgram"""
-            async for event in audio_stream:
-                # event is AudioFrameEvent, we need the .frame property
-                stt_stream.push_frame(event.frame)
+            try:
+                async for event in audio_stream:
+                    # event is AudioFrameEvent, we need the .frame property
+                    stt_stream.push_frame(event.frame)
+                    
+                # When audio stream ends, let Deepgram know we're done sending audio
+                # This allows it to finalize any pending transcriptions gracefully
+                print(f"[AUDIO] Audio stream ended for track {track.sid}")
+            except Exception as e:
+                print(f"[AUDIO] Error in process_audio: {e}")
 
         async def process_transcription():
             """Receive transcription results from Deepgram"""
-            async for event in stt_stream:
-                # SpeechEventType.FINAL_TRANSCRIPT means the sentence is complete
-                # (as opposed to INTERIM which is still being processed)
-                if event.type == SpeechEventType.FINAL_TRANSCRIPT:
-                    text = event.alternatives[0].text
-                    if text.strip():
-                        print(f"[TRANSCRIPT] {text}")
-                        processor.add_transcript(text)
+            try:
+                print(f"[AUDIO] Starting to listen for transcription from stt_stream")
+                async for event in stt_stream:
+                    print(f"[AUDIO] Received event type: {event.type}")
+                    # SpeechEventType.FINAL_TRANSCRIPT means the sentence is complete
+                    # (as opposed to INTERIM which is still being processed)
+                    if event.type == SpeechEventType.FINAL_TRANSCRIPT:
+                        text = event.alternatives[0].text
+                        if text.strip():
+                            print(f"[TRANSCRIPT] {text}")
+                            processor.add_transcript(text)
+                    else:
+                        print(f"[AUDIO] Ignoring event type {event.type}, waiting for FINAL_TRANSCRIPT")
+                print(f"[AUDIO] stt_stream ended for track {track.sid}")
+            except Exception as e:
+                print(f"[AUDIO] Error in process_transcription: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Run both tasks concurrently
         # - One sends audio to Deepgram
         # - One receives text from Deepgram
-        await asyncio.gather(
-            process_audio(),
-            process_transcription()
-        )
+        # Use asyncio.gather with return_exceptions to handle both completing
+        try:
+            await asyncio.gather(
+                process_audio(),
+                process_transcription(),
+                return_exceptions=True
+            )
+        except Exception as e:
+            print(f"[AUDIO] Error in transcribe_track: {e}")
+        finally:
+            print(f"[AUDIO] Transcription task ended for track {track.sid}")
+
+    # Listen for participant events
+    @ctx.room.on("participant_joined")
+    def on_participant_joined(participant: rtc.RemoteParticipant):
+        """Called when a participant joins the room"""
+        print(f"[ROOM] Participant joined: {participant.identity}")
+    
+    @ctx.room.on("participant_left")
+    def on_participant_left(participant: rtc.RemoteParticipant):
+        """Called when a participant leaves the room"""
+        print(f"[ROOM] Participant left: {participant.identity}")
 
     # Listen for when participants publish audio tracks
     # This fires when someone (the student) starts their microphone
@@ -321,16 +444,25 @@ async def entrypoint(ctx: JobContext):
         participant: rtc.RemoteParticipant
     ):
         """Called when we receive a new audio track from a participant"""
+        print(f"[AUDIO] Track subscribed: kind={track.kind}, sid={track.sid}, participant={participant.identity}")
         if track.kind == rtc.TrackKind.KIND_AUDIO:
             print(f"[AUDIO] New audio track from: {participant.identity}")
             # Start transcribing this audio track
             asyncio.create_task(transcribe_track(track))
+        else:
+            print(f"[AUDIO] Ignoring non-audio track: {track.kind}")
 
     # Also handle tracks that are already published when we join
+    print(f"[AUDIO] Checking for existing audio tracks...")
     for participant in ctx.room.remote_participants.values():
+        print(f"[AUDIO]   Participant {participant.identity} has {len(participant.track_publications)} publications")
         for publication in participant.track_publications.values():
+            print(f"[AUDIO]     Publication: {publication.track_sid if publication.track else 'no-track'}, kind={publication.kind}")
             if publication.track and publication.track.kind == rtc.TrackKind.KIND_AUDIO:
+                print(f"[AUDIO]     Found existing audio track, starting transcription")
                 asyncio.create_task(transcribe_track(publication.track))
+            else:
+                print(f"[AUDIO]     Skipping non-audio or unpublished track")
 
     # Send a message to let the frontend know the agent is ready
     ready_message = json.dumps({
