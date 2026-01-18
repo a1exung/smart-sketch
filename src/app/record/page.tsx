@@ -297,11 +297,12 @@ export default function RecordPage() {
             <div className="w-full max-w-xl space-y-6 animate-fade-in-down">
               <div className="text-center">
                 <h1 className="text-3xl font-bold text-white mb-2">
-                  Ready to Record
-                </h1>
-                <p className="text-gray-300">
+                  {!isRecording && 'Ready to Record'}
                   {isRecording && !isPaused && 'Recording in progress...'}
                   {isRecording && isPaused && 'Recording paused'}
+                </h1>
+                <p className="text-gray-300">
+                  {!isRecording && 'Check your camera position and audio quality'}
                 </p>
               </div>
 
