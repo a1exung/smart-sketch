@@ -1,17 +1,33 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ReactFlow, { Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { useAuth } from '@/lib/auth-context';
+import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant } from 'livekit-client';
+
+// Types for agent messages
+interface ConceptData {
+  label: string;
+  type: 'main' | 'concept' | 'detail';
+  explanation: string;
+}
+
+interface AgentMessage {
+  type: 'agent_ready' | 'concepts' | 'transcript';
+  data: {
+    concepts?: ConceptData[];
+    transcript?: string;
+    message?: string;
+    timestamp?: string;
+  };
+}
 
 export default function RecordPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const roomRef = useRef<Room | null>(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -34,52 +50,186 @@ export default function RecordPage() {
   const [recordingTitle, setRecordingTitle] = useState('');
   const [recordingTitleError, setRecordingTitleError] = useState('');
 
+  // LiveKit state
+  const [liveKitConnected, setLiveKitConnected] = useState(false);
+  const [agentReady, setAgentReady] = useState(false);
+  const [transcripts, setTranscripts] = useState<string[]>([]);
+
   const router = useRouter();
 
-  // React Flow nodes and edges
+  // React Flow nodes and edges - will be updated by agent
   const [nodes, setNodes] = useState<Node[]>([
     {
-      id: '1',
-      data: { label: 'Recording Started' },
-      position: { x: 250, y: 25 },
+      id: 'center',
+      data: { label: 'Lecture' },
+      position: { x: 250, y: 200 },
       style: {
         background: '#3b82f6',
         color: 'white',
-        border: '1px solid #1d4ed8',
-        borderRadius: '8px',
-        padding: '10px',
-      },
-    },
-    {
-      id: '2',
-      data: { label: 'Processing' },
-      position: { x: 200, y: 150 },
-      style: {
-        background: '#10b981',
-        color: 'white',
-        border: '1px solid #059669',
-        borderRadius: '8px',
-        padding: '10px',
-      },
-    },
-    {
-      id: '3',
-      data: { label: 'Visualization' },
-      position: { x: 300, y: 150 },
-      style: {
-        background: '#f59e0b',
-        color: 'white',
-        border: '1px solid #d97706',
-        borderRadius: '8px',
-        padding: '10px',
+        border: '2px solid #1d4ed8',
+        borderRadius: '50%',
+        width: 100,
+        height: 100,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '14px',
+        fontWeight: 'bold',
       },
     },
   ]);
 
-  const [edges, setEdges] = useState<Edge[]>([
-    { id: 'e1-2', source: '1', target: '2', animated: true },
-    { id: 'e1-3', source: '1', target: '3', animated: true },
-  ]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+
+  // Node counter for unique IDs
+  const nodeCounterRef = useRef(0);
+
+  // Add a new concept to the mind map
+  const addConceptToMap = useCallback((concept: ConceptData) => {
+    nodeCounterRef.current += 1;
+    const nodeId = `concept-${nodeCounterRef.current}`;
+
+    // Calculate position in a circular pattern around center
+    const angle = (nodeCounterRef.current * 0.8) % (2 * Math.PI);
+    const radius = 150 + (Math.floor(nodeCounterRef.current / 8) * 80);
+    const x = 250 + radius * Math.cos(angle);
+    const y = 200 + radius * Math.sin(angle);
+
+    // Different colors based on concept type
+    const colors = {
+      main: { bg: '#10b981', border: '#059669' },
+      concept: { bg: '#f59e0b', border: '#d97706' },
+      detail: { bg: '#8b5cf6', border: '#7c3aed' },
+    };
+
+    const color = colors[concept.type] || colors.concept;
+
+    const newNode: Node = {
+      id: nodeId,
+      data: { label: concept.label },
+      position: { x, y },
+      style: {
+        background: color.bg,
+        color: 'white',
+        border: `2px solid ${color.border}`,
+        borderRadius: '8px',
+        padding: '10px',
+        fontSize: '12px',
+        fontWeight: '500',
+        maxWidth: '120px',
+        textAlign: 'center' as const,
+      },
+    };
+
+    const newEdge: Edge = {
+      id: `edge-${nodeId}`,
+      source: 'center',
+      target: nodeId,
+      animated: true,
+      style: { stroke: color.border },
+    };
+
+    setNodes((prev) => [...prev, newNode]);
+    setEdges((prev) => [...prev, newEdge]);
+  }, []);
+
+  // Handle messages from the agent
+  const handleAgentMessage = useCallback((message: AgentMessage) => {
+    console.log('[AGENT MESSAGE]', message);
+
+    switch (message.type) {
+      case 'agent_ready':
+        setAgentReady(true);
+        console.log('Agent is ready and listening!');
+        break;
+
+      case 'concepts':
+        if (message.data.concepts) {
+          message.data.concepts.forEach((concept) => {
+            addConceptToMap(concept);
+          });
+        }
+        if (message.data.transcript) {
+          setTranscripts((prev) => [...prev, message.data.transcript!]);
+        }
+        break;
+
+      case 'transcript':
+        if (message.data.transcript) {
+          setTranscripts((prev) => [...prev, message.data.transcript!]);
+        }
+        break;
+    }
+  }, [addConceptToMap]);
+
+  // Connect to LiveKit room
+  const connectToLiveKit = useCallback(async (mediaStream: MediaStream) => {
+    try {
+      // Fetch token from our API
+      const response = await fetch('/api/livekit/token?room=smartsketch-room&username=student');
+      if (!response.ok) {
+        throw new Error('Failed to fetch LiveKit token');
+      }
+      const { token } = await response.json();
+
+      const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+      if (!livekitUrl) {
+        console.warn('NEXT_PUBLIC_LIVEKIT_URL not set, skipping LiveKit connection');
+        return;
+      }
+
+      // Create and connect to room
+      const room = new Room();
+      roomRef.current = room;
+
+      // Listen for data messages from the agent
+      room.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant | LocalParticipant, kind?: DataPacket_Kind, topic?: string) => {
+        if (topic === 'smartsketch') {
+          try {
+            const message: AgentMessage = JSON.parse(new TextDecoder().decode(payload));
+            handleAgentMessage(message);
+          } catch (e) {
+            console.error('Failed to parse agent message:', e);
+          }
+        }
+      });
+
+      // Connect to room
+      await room.connect(livekitUrl, token);
+      console.log('Connected to LiveKit room:', room.name);
+
+      // Publish our audio and video tracks
+      const audioTrack = mediaStream.getAudioTracks()[0];
+      const videoTrack = mediaStream.getVideoTracks()[0];
+
+      if (audioTrack) {
+        await room.localParticipant.publishTrack(audioTrack);
+        console.log('Published audio track');
+      }
+
+      if (videoTrack) {
+        await room.localParticipant.publishTrack(videoTrack);
+        console.log('Published video track');
+      }
+
+      setLiveKitConnected(true);
+
+    } catch (error) {
+      console.error('LiveKit connection error:', error);
+      // Don't fail the recording if LiveKit fails - still allow local recording
+    }
+  }, [handleAgentMessage]);
+
+  // Disconnect from LiveKit
+  const disconnectFromLiveKit = useCallback(() => {
+    if (roomRef.current) {
+      roomRef.current.disconnect();
+      roomRef.current = null;
+      setLiveKitConnected(false);
+      setAgentReady(false);
+      console.log('Disconnected from LiveKit');
+    }
+  }, []);
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -99,17 +249,6 @@ export default function RecordPage() {
         setHasPermission(true);
         setPermissionError('');
 
-        // Setup MediaRecorder
-        const mediaRecorder = new MediaRecorder(mediaStream);
-        mediaRecorderRef.current = mediaRecorder;
-
-        mediaRecorder.ondataavailable = (event) => {
-          chunksRef.current.push(event.data);
-        };
-
-        mediaRecorder.onstop = () => {
-          chunksRef.current = [];
-        };
       } catch (error) {
         setHasPermission(false);
         const err = error as DOMException;
@@ -145,33 +284,53 @@ export default function RecordPage() {
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
+      disconnectFromLiveKit();
     };
   }, []);
 
-  const handleStartRecording = () => {
-    if (mediaRecorderRef.current) {
-      chunksRef.current = [];
-      mediaRecorderRef.current.start();
+  const handleStartRecording = async () => {
+    if (stream) {
       setIsRecording(true);
       setIsPaused(false);
       setRecordingEnded(false);
-      // Trigger React Flow board opening animation
       setShowFlowBoard(true);
+
+      // Reset mind map
+      setNodes([{
+        id: 'center',
+        data: { label: 'Lecture' },
+        position: { x: 250, y: 200 },
+        style: {
+          background: '#3b82f6',
+          color: 'white',
+          border: '2px solid #1d4ed8',
+          borderRadius: '50%',
+          width: 100,
+          height: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '14px',
+          fontWeight: 'bold',
+        },
+      }]);
+      setEdges([]);
+      nodeCounterRef.current = 0;
+      setTranscripts([]);
+
+      // Connect to LiveKit to enable agent transcription
+      await connectToLiveKit(stream);
     }
   };
 
   const handlePauseRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.pause();
-      setIsPaused(true);
-    }
+    setIsPaused(true);
+    // Note: LiveKit doesn't have pause - tracks keep streaming
+    // You could mute the tracks if needed
   };
 
   const handleResumeRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
-      mediaRecorderRef.current.resume();
-      setIsPaused(false);
-    }
+    setIsPaused(false);
   };
 
   const handleStopRecording = () => {
@@ -179,23 +338,21 @@ export default function RecordPage() {
   };
 
   const confirmStopRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setIsPaused(false);
-      setShowChat(true);
-      setChatMessages((prev) =>
-        prev.length
-          ? prev
-          : [
-              {
-                role: 'assistant',
-                content: 'Recording ended. Ask anything about this session while we process it.'
-              },
-            ]
-      );
-      setRecordingEnded(true);
-    }
+    disconnectFromLiveKit();
+    setIsRecording(false);
+    setIsPaused(false);
+    setShowChat(true);
+    setChatMessages((prev) =>
+      prev.length
+        ? prev
+        : [
+            {
+              role: 'assistant',
+              content: 'Recording ended. Ask anything about this session while we process it.'
+            },
+          ]
+    );
+    setRecordingEnded(true);
     setShowConfirmation(false);
   };
 
@@ -220,6 +377,25 @@ export default function RecordPage() {
         </button>
       </div>
 
+      {/* Connection Status - Top Right */}
+      {isRecording && (
+        <div className="absolute top-6 right-6 z-20 flex items-center gap-2">
+          {liveKitConnected ? (
+            <div className="flex items-center gap-2 bg-green-100 px-3 py-2 rounded-lg">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-green-700 text-sm font-medium">
+                {agentReady ? 'Agent Connected' : 'Connecting to Agent...'}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-yellow-100 px-3 py-2 rounded-lg">
+              <div className="w-2 h-2 bg-yellow-500 rounded-full" />
+              <span className="text-yellow-700 text-sm font-medium">Local Recording</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Layout: Recording on Left, Flow Board on Right */}
       <div className="flex h-screen w-full">
         {/* LEFT SIDE - Recording Interface */}
@@ -231,7 +407,15 @@ export default function RecordPage() {
                 <p className="text-gray-600">Ask questions about the session. AI responses coming soon.</p>
               </div>
 
-              <div className="bg-white rounded-lg shadow-lg border border-gray-200 h-[70vh] flex flex-col">
+              {/* Show transcripts if we have them */}
+              {transcripts.length > 0 && (
+                <div className="bg-blue-50 rounded-lg p-4 max-h-32 overflow-y-auto">
+                  <h3 className="text-sm font-semibold text-blue-800 mb-2">Session Transcript:</h3>
+                  <p className="text-sm text-blue-700">{transcripts.join(' ')}</p>
+                </div>
+              )}
+
+              <div className="bg-white rounded-lg shadow-lg border border-gray-200 h-[60vh] flex flex-col">
                 <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
                   {chatMessages.length === 0 && (
                     <div className="text-sm text-gray-500 text-center">No messages yet. Start the conversation.</div>
@@ -360,7 +544,9 @@ export default function RecordPage() {
               </div>
 
               <p className="text-center text-sm text-gray-500">
-                Your feed will be saved when you stop.
+                {liveKitConnected
+                  ? 'Your audio is being transcribed in real-time by the AI agent.'
+                  : 'Your feed will be saved when you stop.'}
               </p>
             </div>
           ) : (
@@ -373,12 +559,12 @@ export default function RecordPage() {
 
                 {cameraError && (
                   <div className="mb-4 text-red-600 font-semibold">
-                    ❌ Camera not detected
+                    Camera not detected
                   </div>
                 )}
                 {micError && (
                   <div className="mb-4 text-red-600 font-semibold">
-                    ❌ Microphone not detected
+                    Microphone not detected
                   </div>
                 )}
 
@@ -428,14 +614,30 @@ export default function RecordPage() {
           {showFlowBoard && (
             <div className="h-full w-full flex flex-col">
               <div className="px-6 py-4 border-b border-gray-300 bg-gradient-to-r from-blue-50 to-purple-50">
-                <h2 className="text-xl font-bold text-gray-900">Live Processing</h2>
-                <p className="text-sm text-gray-600">Visualization of content being processed</p>
+                <h2 className="text-xl font-bold text-gray-900">Live Mind Map</h2>
+                <p className="text-sm text-gray-600">
+                  {agentReady
+                    ? 'Concepts appear as the AI processes your speech'
+                    : liveKitConnected
+                      ? 'Waiting for agent to connect...'
+                      : 'Connect to see real-time concepts'}
+                </p>
               </div>
               <div className="flex-1">
-                <ReactFlow nodes={nodes} edges={edges} fitView>
-                  {/* You can add controls and other ReactFlow components here */}
-                </ReactFlow>
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  fitView
+                  attributionPosition="bottom-left"
+                />
               </div>
+              {/* Live transcript preview */}
+              {transcripts.length > 0 && (
+                <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 max-h-24 overflow-y-auto">
+                  <p className="text-xs text-gray-500 font-medium mb-1">Latest transcript:</p>
+                  <p className="text-sm text-gray-700">{transcripts[transcripts.length - 1]}</p>
+                </div>
+              )}
             </div>
           )}
         </div>

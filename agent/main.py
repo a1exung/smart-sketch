@@ -38,7 +38,13 @@ import asyncio
 import json
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import List
+
+# Load environment variables from .env file
+# This MUST happen before importing LiveKit plugins that need API keys
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
 
 # LiveKit imports - these are the libraries that connect to LiveKit
 from livekit import rtc
@@ -48,13 +54,13 @@ from livekit.agents import (
     JobProcess,
     WorkerOptions,
     cli,
-    llm,
 )
 from livekit.agents.stt import SpeechEvent, SpeechEventType
-from livekit.plugins import deepgram, openai
+from livekit.plugins import deepgram
+import openai as openai_client
 
 # How often to batch transcripts and extract concepts (in seconds)
-BATCH_INTERVAL_SECONDS = 30
+BATCH_INTERVAL_SECONDS = 10
 
 
 class TranscriptProcessor:
@@ -80,7 +86,7 @@ class TranscriptProcessor:
 
         # OpenAI client for concept extraction
         # This uses the OPENAI_API_KEY environment variable automatically
-        self.openai_client = openai.LLM(model="gpt-4o-mini")
+        self.openai = openai_client.AsyncOpenAI()
 
         # Track when we last processed a batch
         self.last_batch_time = datetime.now()
@@ -143,7 +149,6 @@ class TranscriptProcessor:
         """
 
         # The prompt that tells OpenAI what to do
-        # This is similar to what's in your process-transcript API route
         prompt = f"""You are an educational assistant analyzing a lecture transcript.
 Extract the key concepts mentioned and return them as a JSON array.
 
@@ -152,36 +157,44 @@ Each concept should have:
 - "type": One of "main" (core topic), "concept" (supporting idea), or "detail" (specific fact)
 - "explanation": Brief explanation (1-2 sentences)
 
-Return ONLY valid JSON array, no other text.
+Return ONLY valid JSON array, no other text. Example:
+[{{"label": "Photosynthesis", "type": "main", "explanation": "Process by which plants convert light to energy"}}]
 
 Transcript:
-{transcript}
+{transcript}"""
 
-JSON:"""
-
-        # Create a chat completion request
-        # This is like sending a message to ChatGPT
-        messages = [
-            llm.ChatMessage(role="user", content=prompt)
-        ]
-
-        # Get response from OpenAI
-        response = await self.openai_client.chat(chat_ctx=llm.ChatContext(messages=messages))
-
-        # Parse the JSON response
         try:
-            # The response is a stream, so we need to collect it
-            full_response = ""
-            async for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    full_response += chunk.choices[0].delta.content
+            # Call OpenAI API
+            response = await self.openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You extract educational concepts from lecture transcripts. Return only valid JSON arrays."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=500
+            )
 
-            concepts = json.loads(full_response)
+            # Get the response text
+            response_text = response.choices[0].message.content.strip()
+
+            # Try to parse as JSON
+            # Sometimes the model wraps it in ```json``` blocks
+            if response_text.startswith("```"):
+                response_text = response_text.split("```")[1]
+                if response_text.startswith("json"):
+                    response_text = response_text[4:]
+                response_text = response_text.strip()
+
+            concepts = json.loads(response_text)
             print(f"[CONCEPTS] Extracted {len(concepts)} concepts")
             return concepts
 
-        except json.JSONDecodeError:
-            print(f"[WARNING] Could not parse OpenAI response as JSON")
+        except json.JSONDecodeError as e:
+            print(f"[WARNING] Could not parse OpenAI response as JSON: {e}")
+            return []
+        except Exception as e:
+            print(f"[ERROR] OpenAI API error: {e}")
             return []
 
     async def send_to_frontend(self, concepts: List[dict], transcript: str):
@@ -275,8 +288,9 @@ async def entrypoint(ctx: JobContext):
 
         async def process_audio():
             """Send audio frames to Deepgram"""
-            async for audio_frame in audio_stream:
-                stt_stream.push_frame(audio_frame)
+            async for event in audio_stream:
+                # event is AudioFrameEvent, we need the .frame property
+                stt_stream.push_frame(event.frame)
 
         async def process_transcription():
             """Receive transcription results from Deepgram"""
