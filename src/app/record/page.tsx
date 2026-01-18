@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import ReactFlow, { Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant } from 'livekit-client';
+import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant, ConnectionState } from 'livekit-client';
 import { saveSession } from '@/lib/sessions-service';
 import { useAuth } from '@/lib/auth-context';
 import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
@@ -58,6 +58,9 @@ export default function RecordPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const isTracksPausedRef = useRef(false);
+
+  // Unique session ID for this recording (used for room name)
+  const sessionIdRef = useRef<string>(`session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   // LiveKit state
   const [liveKitConnected, setLiveKitConnected] = useState(false);
@@ -178,7 +181,7 @@ export default function RecordPage() {
     console.log('[LiveKit] Starting connection process...');
     
     // If already connected, don't reconnect
-    if (roomRef.current && roomRef.current.state === 'connected') {
+    if (roomRef.current && roomRef.current.state === ConnectionState.Connected) {
       console.log('[LiveKit] Already connected, skipping connection');
       setAgentReady(true);
       return;
@@ -196,9 +199,11 @@ export default function RecordPage() {
     }
     
     try {
-      // Fetch token from our API
-      console.log('[LiveKit] Fetching token from API...');
-      const response = await fetch('/api/livekit/token?room=smartsketch-room&username=student');
+      // Fetch token from our API with unique room name
+      const roomName = `smartsketch-${sessionIdRef.current}`;
+      const username = user?.id ? `student-${user.id.slice(0, 8)}` : `student-${Date.now()}`;
+      console.log('[LiveKit] Fetching token for room:', roomName, 'user:', username);
+      const response = await fetch(`/api/livekit/token?room=${encodeURIComponent(roomName)}&username=${encodeURIComponent(username)}`);
       console.log('[LiveKit] API response status:', response.status, response.statusText);
       
       if (!response.ok) {
@@ -225,9 +230,14 @@ export default function RecordPage() {
         return;
       }
 
-      // Create and connect to room
+      // Create and connect to room with better connection options
       console.log('[LiveKit] Creating room instance...');
-      const room = new Room();
+      const room = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        // Reconnection settings
+        disconnectOnPageLeave: false,
+      });
       roomRef.current = room;
 
       // Listen for data messages from the agent
@@ -276,82 +286,164 @@ export default function RecordPage() {
         }
       });
 
+      // Listen for disconnection events to properly update state
+      room.on(RoomEvent.Disconnected, (reason) => {
+        console.log('[LiveKit] Room disconnected, reason:', reason);
+        setLiveKitConnected(false);
+        setAgentReady(false);
+      });
+
+      // Listen for reconnection events
+      room.on(RoomEvent.Reconnecting, () => {
+        console.log('[LiveKit] Room reconnecting...');
+      });
+
+      room.on(RoomEvent.Reconnected, () => {
+        console.log('[LiveKit] Room reconnected');
+        setLiveKitConnected(true);
+      });
+
+      // Listen for track events to debug issues
+      room.on(RoomEvent.TrackUnpublished, (publication, participant) => {
+        console.log('[LiveKit] Track unpublished:', publication.trackSid, 'by', participant.identity);
+      });
+
+      room.on(RoomEvent.LocalTrackUnpublished, (publication, participant) => {
+        console.log('[LiveKit] Local track unpublished:', publication.trackSid);
+      });
+
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        console.log('[LiveKit] Participant disconnected:', participant.identity);
+        if (participant.identity?.includes('agent')) {
+          console.warn('[LiveKit] Agent disconnected!');
+          setAgentReady(false);
+        }
+      });
+
+      room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+        console.log('[LiveKit] Connection quality changed:', quality, 'for', participant.identity);
+      });
+
     } catch (error) {
       console.error('[LiveKit] ❌ Connection error:', error);
+      setLiveKitConnected(false);
+      setAgentReady(false);
     }
   }, [handleAgentMessage]);
 
-  // Publish tracks to LiveKit (called when recording starts)
-  const publishTracksToLiveKit = useCallback(async (mediaStream: MediaStream) => {
-    console.log('[Publish] Starting track publication...');
-    
-    if (!roomRef.current) {
-      console.error('[Publish] ❌ Room not connected, cannot publish tracks');
-      return;
-    }
+  // Store cloned tracks for LiveKit (so we don't lose the original stream when LiveKit unpublishes)
+  const clonedTracksRef = useRef<MediaStreamTrack[]>([]);
 
-    console.log('[Publish] Room state:', roomRef.current.state);
-    
-    // Wait for room to be fully connected if it's still connecting
-    if (roomRef.current.state !== 'connected') {
-      console.log('[Publish] Room not yet connected, waiting...');
-      
-      // Wait up to 5 seconds for connection
+  // Publish tracks to LiveKit (called when recording starts)
+  // Returns true if successful, false if failed
+  const publishTracksToLiveKit = useCallback(async (mediaStream: MediaStream): Promise<boolean> => {
+    console.log('[Publish] Starting track publication...');
+
+    // Helper to check if room is connected (avoids TypeScript narrowing issues)
+    const isConnected = () => roomRef.current?.state === ConnectionState.Connected;
+
+    // If room doesn't exist or is disconnected, try to reconnect
+    if (!roomRef.current || !isConnected()) {
+      console.log('[Publish] Room not connected, attempting to reconnect...');
+
+      // Try to reconnect
+      await connectToLiveKit();
+
+      // Wait a bit for connection to establish
       let attempts = 0;
-      while (roomRef.current && roomRef.current.state !== 'connected' && attempts < 50) {
+      while (!isConnected() && attempts < 30) {
         await new Promise(resolve => setTimeout(resolve, 100));
         attempts++;
       }
-      
-      if (!roomRef.current || roomRef.current.state !== 'connected') {
-        console.error('[Publish] ❌ Room failed to connect in time');
-        throw new Error('Room not connected');
+
+      if (!isConnected()) {
+        console.error('[Publish] ❌ Failed to reconnect to room');
+        return false;
       }
-      
-      console.log('[Publish] ✅ Room now connected, proceeding with publish');
+
+      console.log('[Publish] ✅ Reconnected successfully');
     }
-    
+
+    console.log('[Publish] Room state:', roomRef.current?.state);
+
     console.log('[Publish] Getting tracks from stream...');
 
+    // Extra null check after reconnection attempt
+    if (!roomRef.current) {
+      console.error('[Publish] ❌ Room reference is null');
+      return false;
+    }
+
     try {
+      // IMPORTANT: Clone tracks before publishing to LiveKit
+      // When LiveKit unpublishes tracks, it stops them - cloning prevents this from killing the original stream
       const audioTrack = mediaStream.getAudioTracks()[0];
       const videoTrack = mediaStream.getVideoTracks()[0];
 
-      console.log('[Publish] Audio track:', audioTrack?.id, 'enabled:', audioTrack?.enabled);
-      console.log('[Publish] Video track:', videoTrack?.id, 'enabled:', videoTrack?.enabled);
+      console.log('[Publish] Original audio track:', audioTrack?.id, 'enabled:', audioTrack?.enabled);
+      console.log('[Publish] Original video track:', videoTrack?.id, 'enabled:', videoTrack?.enabled);
+
+      // Stop any previously cloned tracks
+      clonedTracksRef.current.forEach(track => {
+        track.stop();
+        console.log('[Publish] Stopped old cloned track:', track.kind);
+      });
+      clonedTracksRef.current = [];
 
       if (audioTrack) {
-        console.log('[Publish] Publishing audio track...');
-        await roomRef.current.localParticipant.publishTrack(audioTrack);
-        console.log('[Publish] ✅ Published audio track');
+        const clonedAudio = audioTrack.clone();
+        // Monitor track state
+        clonedAudio.onended = () => {
+          console.warn('[Track] Cloned audio track ended unexpectedly');
+        };
+        clonedTracksRef.current.push(clonedAudio);
+        console.log('[Publish] Publishing cloned audio track:', clonedAudio.id);
+        await roomRef.current.localParticipant.publishTrack(clonedAudio);
+        console.log('[Publish] ✅ Published cloned audio track');
       }
 
       if (videoTrack) {
-        console.log('[Publish] Publishing video track...');
-        await roomRef.current.localParticipant.publishTrack(videoTrack);
-        console.log('[Publish] ✅ Published video track');
+        const clonedVideo = videoTrack.clone();
+        // Monitor track state
+        clonedVideo.onended = () => {
+          console.warn('[Track] Cloned video track ended unexpectedly');
+        };
+        clonedTracksRef.current.push(clonedVideo);
+        console.log('[Publish] Publishing cloned video track:', clonedVideo.id);
+        await roomRef.current.localParticipant.publishTrack(clonedVideo);
+        console.log('[Publish] ✅ Published cloned video track');
       }
+
+      return true;
     } catch (error) {
       console.error('[Publish] ❌ Failed to publish tracks:', error);
-      throw error;
+      return false;
     }
-  }, []);
+  }, [connectToLiveKit]);
 
   // Disconnect from LiveKit
   const disconnectFromLiveKit = useCallback(async () => {
     console.log('[LiveKit] Disconnecting from room...');
+
+    // Stop all cloned tracks first
+    clonedTracksRef.current.forEach(track => {
+      track.stop();
+      console.log('[LiveKit] Stopped cloned track:', track.kind);
+    });
+    clonedTracksRef.current = [];
+
     if (roomRef.current) {
       try {
         // Remove all event listeners to prevent memory leaks
         roomRef.current.removeAllListeners();
-        
+
         // Disconnect from room - this is async, must await it
         await roomRef.current.disconnect();
         console.log('[LiveKit] ✅ Disconnected from room');
       } catch (error) {
         console.error('[LiveKit] Error during disconnect:', error);
       }
-      
+
       roomRef.current = null;
       setLiveKitConnected(false);
       setAgentReady(false);
@@ -489,10 +581,17 @@ export default function RecordPage() {
       nodeCounterRef.current = 0;
       setTranscripts([]);
 
-      // Publish tracks to LiveKit (already connected in background)
+      // Publish tracks to LiveKit (will reconnect if needed)
       console.log('[Start Recording] Publishing tracks to LiveKit...');
-      await publishTracksToLiveKit(stream);
-      console.log('[Start Recording] Tracks published');
+      const published = await publishTracksToLiveKit(stream);
+
+      if (!published) {
+        console.error('[Start Recording] Failed to publish tracks, but continuing with local recording');
+        // Recording will continue locally even if LiveKit fails
+        // The mind map won't update but audio will still be recorded
+      } else {
+        console.log('[Start Recording] Tracks published successfully');
+      }
     }
   };
 
@@ -506,7 +605,7 @@ export default function RecordPage() {
     }
 
     // Unpublish tracks so agent doesn't transcribe during pause
-    if (roomRef.current && roomRef.current.state === 'connected') {
+    if (roomRef.current && roomRef.current.state === ConnectionState.Connected) {
       try {
         const publications = Array.from(roomRef.current.localParticipant.trackPublications.values());
         console.log('[Pause] Unpublishing', publications.length, 'tracks...');
@@ -534,12 +633,12 @@ export default function RecordPage() {
       // Republish tracks first to resume transcription
       if (isTracksPausedRef.current) {
         console.log('[Resume] Republishing tracks to LiveKit...');
-        try {
-          await publishTracksToLiveKit(stream);
+        const published = await publishTracksToLiveKit(stream);
+        if (published) {
           isTracksPausedRef.current = false;
           console.log('[Resume] ✅ Tracks resumed - transcript collection resumed');
-        } catch (error) {
-          console.error('[Resume] ❌ Failed to republish tracks:', error);
+        } else {
+          console.error('[Resume] ❌ Failed to republish tracks, transcription may not work');
         }
       }
 
@@ -655,6 +754,68 @@ export default function RecordPage() {
                 <div className="text-center">
                   <h1 className="text-3xl font-display font-bold text-foreground mb-2">Session Chat</h1>
                   <p className="text-foreground-muted">Ask questions about your session</p>
+                  <button
+                    onClick={async () => {
+                      console.log('[New Recording] Resetting state for new recording...');
+                      // Generate new session ID for new room
+                      sessionIdRef.current = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                      console.log('[New Recording] New session ID:', sessionIdRef.current);
+
+                      // Reset all recording-related state
+                      setShowChat(false);
+                      setRecordingEnded(false);
+                      setShowFlowBoard(false);
+                      setChatMessages([]);
+                      setTranscripts([]);
+                      setNodes([{
+                        id: 'center',
+                        data: { label: 'Lecture' },
+                        position: { x: 250, y: 200 },
+                        style: {
+                          background: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)',
+                          color: '#0c0f14',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: 100,
+                          height: 100,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          boxShadow: '0 0 30px rgba(20, 184, 166, 0.4)',
+                        },
+                      }]);
+                      setEdges([]);
+                      nodeCounterRef.current = 0;
+                      audioChunksRef.current = [];
+                      isTracksPausedRef.current = false;
+
+                      // Reconnect to LiveKit with new session ID
+                      if (stream) {
+                        console.log('[New Recording] Reconnecting to LiveKit...');
+                        await connectToLiveKit();
+                      } else {
+                        console.log('[New Recording] No stream, requesting permissions again...');
+                        // Request new permissions if stream was lost
+                        try {
+                          const mediaStream = await navigator.mediaDevices.getUserMedia({
+                            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                            audio: true,
+                          });
+                          setStream(mediaStream);
+                          if (videoRef.current) {
+                            videoRef.current.srcObject = mediaStream;
+                          }
+                        } catch (error) {
+                          console.error('[New Recording] Failed to get media:', error);
+                        }
+                      }
+                    }}
+                    className="mt-4 px-6 py-2.5 rounded-xl btn-primary font-semibold"
+                  >
+                    Start New Recording
+                  </button>
                 </div>
 
                 {/* Transcripts preview */}

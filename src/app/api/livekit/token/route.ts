@@ -18,9 +18,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Create access token
+    // Create access token with longer TTL (2 hours)
     const at = new AccessToken(apiKey, apiSecret, {
       identity: participantName,
+      ttl: '2h',
     });
 
     // Grant permissions
