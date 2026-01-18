@@ -3,6 +3,7 @@
 
 import { useRef } from 'react';
 import Auth from './auth/page';
+import LandingNeuralNetworkBackground from '@/components/LandingNeuralNetworkBackground';
 
 export default function Home() {
   const authSectionRef = useRef<HTMLDivElement>(null);
@@ -14,10 +15,11 @@ export default function Home() {
 
   return (
     <div ref={scrollContainerRef} className="relative w-full snap-y snap-mandatory overflow-y-scroll h-screen">
+      <LandingNeuralNetworkBackground />
       {/* Landing Page Section */}
-      <div className="relative flex flex-col items-center justify-center min-h-screen bg-gray-50 overflow-hidden snap-start">
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen bg-transparent overflow-hidden snap-start">
         <main className="flex flex-col items-center justify-center flex-1 px-4 text-center">
-          <h1 className="text-6xl md:text-8xl font-bold text-gray-800 animate-fade-in-down">
+          <h1 className="text-6xl md:text-8xl font-bold text-white animate-fade-in-down">
             SmartSketch
           </h1>
         </main>
@@ -27,7 +29,7 @@ export default function Home() {
             className="animate-bounce cursor-pointer"
             aria-label="Scroll to authentication"
           >
-            <div className="flex flex-col items-center text-gray-600 hover:text-gray-800 transition-colors">
+            <div className="flex flex-col items-center text-gray-300 hover:text-white transition-colors">
               <span className="text-lg">Get Started</span>
               <svg
                 className="w-6 h-6"

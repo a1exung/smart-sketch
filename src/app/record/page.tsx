@@ -24,6 +24,8 @@ interface AgentMessage {
     timestamp?: string;
   };
 }
+import { useAuth } from '@/lib/auth-context';
+import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
 
 export default function RecordPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -362,7 +364,8 @@ export default function RecordPage() {
 
   return (
     <ProtectedRoute>
-      <div className="relative w-full min-h-screen bg-gray-50 overflow-hidden">
+      <NeuralNetworkBackground />
+      <div className="relative z-10 w-full min-h-screen bg-transparent overflow-hidden">
       {/* Back Button - Top Left */}
       <div className="absolute top-6 left-6 z-20">
         <button
@@ -399,12 +402,12 @@ export default function RecordPage() {
       {/* Main Layout: Recording on Left, Flow Board on Right */}
       <div className="flex h-screen w-full">
         {/* LEFT SIDE - Recording Interface */}
-        <div className={`flex-1 flex flex-col items-center justify-center px-4 pt-20 transition-all duration-500 ${(isRecording || showFlowBoard) ? 'w-1/2' : 'w-full'}`}>
+        <div className={`flex flex-col items-center justify-center px-4 pt-20 transition-all duration-500 ${showFlowBoard ? 'w-1/2' : 'w-full'}`}>
           {showChat ? (
             <div className="w-full max-w-2xl space-y-6 animate-[fade-in-down_0.8s_ease-out] transition-transform duration-500 ease-out">
               <div className="text-center">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Chat</h1>
-                <p className="text-gray-600">Ask questions about the session. AI responses coming soon.</p>
+                <h1 className="text-3xl font-bold text-white mb-2">Chat</h1>
+                <p className="text-gray-300">Ask questions about the session. AI responses coming soon.</p>
               </div>
 
               {/* Show transcripts if we have them */}
@@ -416,9 +419,10 @@ export default function RecordPage() {
               )}
 
               <div className="bg-white rounded-lg shadow-lg border border-gray-200 h-[60vh] flex flex-col">
+              <div className="bg-gray-900 rounded-lg shadow-lg border border-gray-700 h-[70vh] flex flex-col">
                 <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
                   {chatMessages.length === 0 && (
-                    <div className="text-sm text-gray-500 text-center">No messages yet. Start the conversation.</div>
+                    <div className="text-sm text-gray-400 text-center">No messages yet. Start the conversation.</div>
                   )}
                   {chatMessages.map((msg, idx) => (
                     <div
@@ -429,7 +433,7 @@ export default function RecordPage() {
                         className={`max-w-[75%] rounded-lg px-3 py-2 text-sm shadow message-pop ${
                           msg.role === 'user'
                             ? 'bg-blue-500 text-white'
-                            : 'bg-gray-100 text-gray-900'
+                            : 'bg-gray-800 text-gray-200'
                         }`}
                       >
                         {msg.content}
@@ -438,7 +442,7 @@ export default function RecordPage() {
                   ))}
                 </div>
                 <form
-                  className="border-t border-gray-200 p-3 flex gap-2"
+                  className="border-t border-gray-700 p-3 flex gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
                     const value = chatInput.trim();
@@ -454,7 +458,7 @@ export default function RecordPage() {
                   <input
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 border border-gray-600 rounded-lg px-3 py-2 text-sm font-medium text-white bg-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
                     placeholder="Type your question..."
                   />
                   <button
@@ -468,23 +472,23 @@ export default function RecordPage() {
             </div>
           ) : hasPermission === null ? (
             <div className="text-center animate-fade-in-down">
-              <h1 className="text-4xl font-bold text-gray-900 mb-4">
+              <h1 className="text-4xl font-bold text-white mb-4">
                 Requesting Permissions...
               </h1>
-              <p className="text-gray-600">
+              <p className="text-gray-300">
                 Please allow access to your camera and microphone
               </p>
             </div>
           ) : hasPermission && !permissionError ? (
             <div className="w-full max-w-xl space-y-6 animate-fade-in-down">
               <div className="text-center">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  Recording
-                </h1>
-                <p className="text-gray-600">
+                <h1 className="text-3xl font-bold text-white mb-2">
+                  {!isRecording && 'Ready to Record'}
                   {isRecording && !isPaused && 'Recording in progress...'}
                   {isRecording && isPaused && 'Recording paused'}
-                  {!isRecording && 'Ready to record'}
+                </h1>
+                <p className="text-gray-300">
+                  {!isRecording && 'Check your camera position and audio quality'}
                 </p>
               </div>
 
@@ -605,31 +609,51 @@ export default function RecordPage() {
           )}
         </div>
 
-        {/* RIGHT SIDE - React Flow Board */}
+        {/* RIGHT SIDE - React Flow Board in Modal */}
         <div
-          className={`transition-all duration-700 ease-out overflow-hidden bg-white border-l border-gray-300 ${
+          className={`transition-all duration-700 ease-out overflow-hidden flex items-center justify-center ${
             showFlowBoard ? 'w-1/2 opacity-100' : 'w-0 opacity-0'
           }`}
         >
           {showFlowBoard && (
-            <div className="h-full w-full flex flex-col">
-              <div className="px-6 py-4 border-b border-gray-300 bg-gradient-to-r from-blue-50 to-purple-50">
-                <h2 className="text-xl font-bold text-gray-900">Live Mind Map</h2>
-                <p className="text-sm text-gray-600">
-                  {agentReady
+//             <div className="h-full w-full flex flex-col">
+//               <div className="px-6 py-4 border-b border-gray-300 bg-gradient-to-r from-blue-50 to-purple-50">
+//                 <h2 className="text-xl font-bold text-gray-900">Live Mind Map</h2>
+//                 <p className="text-sm text-gray-600">
+//                   {agentReady
+//                     ? 'Concepts appear as the AI processes your speech'
+//                     : liveKitConnected
+//                       ? 'Waiting for agent to connect...'
+//                       : 'Connect to see real-time concepts'}
+//                 </p>
+//               </div>
+//               <div className="flex-1">
+//                 <ReactFlow
+//                   nodes={nodes}
+//                   edges={edges}
+//                   fitView
+//                   attributionPosition="bottom-left"
+//                 />
+            <div className="w-full h-full flex items-center justify-center p-6">
+              <div className="w-full h-full shadow-2xl rounded-2xl overflow-hidden border border-gray-700 bg-gray-900 flex flex-col">
+                <div className="px-6 py-4 border-b border-gray-700 bg-gradient-to-r from-blue-900 to-purple-900">
+                  <h2 className="text-xl font-bold text-white">Live Processing</h2>
+                  <p className="text-sm text-gray-300">Visualization of content being processed
+                    {agentReady
                     ? 'Concepts appear as the AI processes your speech'
                     : liveKitConnected
                       ? 'Waiting for agent to connect...'
                       : 'Connect to see real-time concepts'}
-                </p>
-              </div>
-              <div className="flex-1">
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  fitView
-                  attributionPosition="bottom-left"
-                />
+                  </p>
+                </div>
+                <div className="flex-1 bg-gray-800">
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    fitView
+                    attributionPosition="bottom-left"
+                  />
+                </div>
               </div>
               {/* Live transcript preview */}
               {transcripts.length > 0 && (

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import MindMapVisualization from '@/components/MindMapVisualization';
 import Link from 'next/link';
+import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
 
 // Sample demo data showing how concepts are structured
 const demoConceptsSequence: Array<Array<{ id: string; label: string; type: 'main' | 'concept' | 'detail'; parent?: string }>> = [
@@ -61,22 +62,23 @@ export default function DemoPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-transparent relative">
+      <NeuralNetworkBackground />
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
+      <header className="relative z-10 bg-gray-900 shadow-sm border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="text-2xl font-bold text-blue-600">
+          <Link href="/" className="text-2xl font-bold text-blue-400">
             Smart Sketch
           </Link>
-          <span className="text-gray-600 font-medium">Demo Mode</span>
+          <span className="text-gray-300 font-medium">Demo Mode</span>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto p-4">
-        <div className="bg-white rounded-lg shadow-md p-6 mb-4">
-          <h1 className="text-2xl font-bold mb-2 text-gray-800">Demo: How Smart Sketch Works</h1>
-          <p className="text-gray-600 mb-4">
+      <div className="relative z-10 max-w-7xl mx-auto p-4">
+        <div className="bg-gray-900 rounded-lg shadow-md p-6 mb-4 border border-gray-700">
+          <h1 className="text-2xl font-bold mb-2 text-white">Demo: How Smart Sketch Works</h1>
+          <p className="text-gray-300 mb-4">
             This demo shows how concepts from a lecture are progressively added to the mind map.
             In a real session, these would be extracted from live audio/video in real-time.
           </p>
@@ -103,14 +105,14 @@ export default function DemoPage() {
             >
               Reset
             </button>
-            <span className="text-gray-600 ml-auto">
+            <span className="text-gray-300 ml-auto">
               Step {step + 1} of {demoConceptsSequence.length}
             </span>
           </div>
         </div>
 
         {/* Visualization */}
-        <div className="bg-white rounded-lg shadow-md p-4 h-[calc(100vh-280px)]">
+        <div className="bg-gray-900 rounded-lg shadow-md p-4 h-[calc(100vh-280px)] border border-gray-700">
           <MindMapVisualization concepts={demoConceptsSequence[step]} />
         </div>
       </div>
