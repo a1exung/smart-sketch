@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import ReactFlow, { Node, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
+import ReactMarkdown from 'react-markdown';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant } from 'livekit-client';
+import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant, ConnectionState } from 'livekit-client';
 import { saveSession } from '@/lib/sessions-service';
 import { useAuth } from '@/lib/auth-context';
 import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
@@ -49,6 +50,8 @@ export default function RecordPage() {
     content: string;
   }[]>([]);
   const [recordingEnded, setRecordingEnded] = useState(false);
+  const [isChatSending, setIsChatSending] = useState(false);
+  const chatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [showHomeModal, setShowHomeModal] = useState(false);
   const [homeModalMode, setHomeModalMode] = useState<'active' | 'ended'>('active');
   const [recordingTitle, setRecordingTitle] = useState('');
@@ -173,6 +176,71 @@ export default function RecordPage() {
     }
   }, [addConceptToMap]);
 
+  // Handle chat submit for Gemini
+  const handleChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const value = chatInput.trim();
+    if (!value) return;
+
+    // Add user message
+    const newMessages = [
+      ...chatMessages,
+      { role: 'user' as const, content: value },
+    ];
+    setChatMessages(newMessages);
+    setChatInput('');
+    setIsChatSending(true);
+
+    try {
+      const fullTranscript = transcripts.join(' ');
+      const res = await fetch('/api/gemini-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          transcript: fullTranscript,
+          title: recordingTitle || 'Current Recording',
+        })
+      });
+
+      if (!res.ok) {
+        let errDetails = 'Gemini request failed';
+        try {
+          const errJson = await res.json();
+          errDetails = errJson?.details || errJson?.error || errDetails;
+        } catch {}
+        throw new Error(errDetails);
+      }
+
+      const data = await res.json();
+      const reply = data.reply || 'I had trouble generating a response. Please try again.';
+
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: reply },
+      ]);
+    } catch (error) {
+      const message = (error as any)?.message || 'Unknown error';
+      console.error('Gemini chat client error:', message);
+      const friendly = message.includes('Missing GEMINI_API_KEY')
+        ? 'Gemini API key is missing. Add GEMINI_API_KEY to .env.local and restart the dev server.'
+        : `Sorry, I ran into an issue: ${message}`;
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: friendly },
+      ]);
+    } finally {
+      setIsChatSending(false);
+    }
+  };
+
+  // Auto-scroll chat
+  useEffect(() => {
+    const container = chatMessagesRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [chatMessages]);
+
   // Connect to LiveKit room (without publishing tracks)
   const connectToLiveKit = useCallback(async () => {
     console.log('[LiveKit] Starting connection process...');
@@ -293,7 +361,7 @@ export default function RecordPage() {
     console.log('[Publish] Room state:', roomRef.current.state);
     
     // Wait for room to be fully connected if it's still connecting
-    if (roomRef.current.state !== 'connected') {
+    if (roomRef.current.state !== ConnectionState.Connected) {
       console.log('[Publish] Room not yet connected, waiting...');
       
       // Wait up to 5 seconds for connection
@@ -931,6 +999,76 @@ export default function RecordPage() {
               </div>
             )}
           </div>
+
+          {/* Post-Recording Chat Section */}
+          {recordingEnded && (
+            <div className="w-full h-full card overflow-hidden flex flex-col opacity-0 animate-fade-in-up [animation-delay:0.2s] [animation-fill-mode:forwards]">
+              <div className="px-6 py-4 border-b border-surface-border bg-background-secondary">
+                <h2 className="text-lg font-display font-bold text-foreground">Sketch Discussion</h2>
+                <p className="text-xs text-foreground-muted mt-1">Ask questions about your recording</p>
+              </div>
+
+              {/* Messages */}
+              <div
+                ref={chatMessagesRef}
+                className="flex-1 overflow-y-auto custom-scrollbar px-4 py-3 space-y-3"
+              >
+                {chatMessages.length === 0 && (
+                  <div className="text-xs text-foreground-muted text-center py-8">No messages yet. Start the conversation.</div>
+                )}
+                {chatMessages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-xl px-4 py-2.5 text-sm opacity-0 animate-fade-in-up [animation-fill-mode:forwards] ${
+                        msg.role === 'user'
+                          ? 'bg-gradient-to-r from-primary to-primary-dark text-background'
+                          : 'bg-background-secondary text-foreground border border-surface-border'
+                      }`}
+                      style={{ animationDelay: `${idx * 50}ms` }}
+                    >
+                      {msg.role === 'assistant' ? (
+                        <div className="prose prose-sm prose-invert max-w-none [&_p]:mb-2 [&_ul]:mb-2 [&_ol]:mb-2 [&_li]:mb-1 [&_code]:bg-black/40 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-foreground [&_pre]:bg-black/40 [&_pre]:text-foreground [&_pre]:p-2 [&_pre]:rounded [&_strong]:text-primary [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-xs">
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        msg.content
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {isChatSending && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[75%] rounded-xl px-4 py-2.5 text-sm bg-background-secondary text-foreground border border-surface-border opacity-80 animate-pulse">
+                      Gemini is thinking...
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Input Form */}
+              <div className="border-t border-surface-border p-4 bg-background-secondary">
+                <form className="flex gap-3" onSubmit={handleChatSubmit}>
+                  <input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    className="flex-1 px-4 py-2.5 rounded-xl input-field text-sm"
+                    placeholder="Ask about this recording..."
+                    disabled={isChatSending}
+                  />
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl btn-primary text-sm font-medium disabled:opacity-70 disabled:cursor-not-allowed"
+                    disabled={isChatSending}
+                  >
+                    Send
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Confirmation Modal */}
