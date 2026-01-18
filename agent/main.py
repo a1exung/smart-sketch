@@ -251,6 +251,7 @@ async def entrypoint(ctx: JobContext):
     3. Listens for audio tracks and transcribes them
     """
 
+    print(f"[AGENT] ✅ ENTRYPOINT CALLED FOR ROOM: {ctx.room.name}")
     print(f"[AGENT] Starting SmartSketch agent...")
 
     # Connect to the room

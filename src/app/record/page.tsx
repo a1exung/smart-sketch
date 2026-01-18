@@ -57,6 +57,7 @@ export default function RecordPage() {
   // Audio recording state
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const isTracksPausedRef = useRef(false);
 
   // LiveKit state
   const [liveKitConnected, setLiveKitConnected] = useState(false);
@@ -174,84 +175,192 @@ export default function RecordPage() {
 
   // Connect to LiveKit room (without publishing tracks)
   const connectToLiveKit = useCallback(async () => {
+    console.log('[LiveKit] Starting connection process...');
+    
+    // If already connected, don't reconnect
+    if (roomRef.current && roomRef.current.state === 'connected') {
+      console.log('[LiveKit] Already connected, skipping connection');
+      setAgentReady(true);
+      return;
+    }
+    
+    // Cleanup any existing connection first
+    if (roomRef.current) {
+      console.log('[LiveKit] Cleaning up existing connection...');
+      try {
+        await roomRef.current.disconnect();
+      } catch (e) {
+        console.log('[LiveKit] Error disconnecting existing room:', e);
+      }
+      roomRef.current = null;
+    }
+    
     try {
       // Fetch token from our API
+      console.log('[LiveKit] Fetching token from API...');
       const response = await fetch('/api/livekit/token?room=smartsketch-room&username=student');
+      console.log('[LiveKit] API response status:', response.status, response.statusText);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch LiveKit token');
+        const errorText = await response.text();
+        console.error('[LiveKit] API error response:', errorText);
+        throw new Error(`Failed to fetch LiveKit token: ${response.status} ${errorText}`);
       }
-      const { token } = await response.json();
+      
+      const data = await response.json();
+      console.log('[LiveKit] API response data:', data);
+      const { token } = data;
+      
+      if (!token) {
+        console.error('[LiveKit] No token in response:', data);
+        throw new Error('Token missing from API response');
+      }
+      
+      console.log('[LiveKit] Token received successfully');
 
       const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+      console.log('[LiveKit] LiveKit URL:', livekitUrl);
       if (!livekitUrl) {
         console.warn('NEXT_PUBLIC_LIVEKIT_URL not set, skipping LiveKit connection');
         return;
       }
 
       // Create and connect to room
+      console.log('[LiveKit] Creating room instance...');
       const room = new Room();
       roomRef.current = room;
 
       // Listen for data messages from the agent
       room.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant | LocalParticipant, kind?: DataPacket_Kind, topic?: string) => {
+        console.log('[LiveKit] Data received:', { topic, payloadSize: payload.length, participant: participant?.name });
+        
+        // Log raw payload for debugging
+        try {
+          const decoded = new TextDecoder().decode(payload);
+          console.log('[LiveKit] Raw payload:', decoded);
+        } catch (e) {
+          console.log('[LiveKit] Could not decode payload as string');
+        }
+        
         if (topic === 'smartsketch') {
           try {
             const message: AgentMessage = JSON.parse(new TextDecoder().decode(payload));
+            console.log('[LiveKit] Parsed message:', message);
+            // If we receive any message from agent, it's ready
+            console.log('[LiveKit] Agent is ready (received data message)');
+            setAgentReady(true);
             handleAgentMessage(message);
           } catch (e) {
-            console.error('Failed to parse agent message:', e);
+            console.error('[LiveKit] Failed to parse agent message:', e);
           }
+        } else {
+          console.log('[LiveKit] Data received on unexpected topic:', topic, '(expected: smartsketch)');
         }
       });
 
       // Connect to room (but don't publish tracks yet)
-      await room.connect(livekitUrl, token);
-      console.log('Connected to LiveKit room:', room.name);
+      console.log('[LiveKit] Connecting to room...');
+      await room.connect(livekitUrl, token, {
+        autoSubscribe: true,
+      });
+      console.log('[LiveKit] ✅ Connected to LiveKit room:', room.name);
       setLiveKitConnected(true);
+      console.log('[LiveKit] State updated - liveKitConnected set to true');
+
+      // Listen for participant joined events (to detect when agent joins)
+      room.on(RoomEvent.ParticipantConnected, (participant) => {
+        console.log('[LiveKit] Participant connected:', participant.identity);
+        if (participant.identity?.includes('agent')) {
+          console.log('[LiveKit] Agent participant detected, setting agentReady to true');
+          setAgentReady(true);
+        }
+      });
 
     } catch (error) {
-      console.error('LiveKit connection error:', error);
+      console.error('[LiveKit] ❌ Connection error:', error);
     }
   }, [handleAgentMessage]);
 
   // Publish tracks to LiveKit (called when recording starts)
   const publishTracksToLiveKit = useCallback(async (mediaStream: MediaStream) => {
+    console.log('[Publish] Starting track publication...');
+    
     if (!roomRef.current) {
-      console.error('Room not connected, cannot publish tracks');
+      console.error('[Publish] ❌ Room not connected, cannot publish tracks');
       return;
     }
+
+    console.log('[Publish] Room state:', roomRef.current.state);
+    
+    // Wait for room to be fully connected if it's still connecting
+    if (roomRef.current.state !== 'connected') {
+      console.log('[Publish] Room not yet connected, waiting...');
+      
+      // Wait up to 5 seconds for connection
+      let attempts = 0;
+      while (roomRef.current && roomRef.current.state !== 'connected' && attempts < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+      
+      if (!roomRef.current || roomRef.current.state !== 'connected') {
+        console.error('[Publish] ❌ Room failed to connect in time');
+        throw new Error('Room not connected');
+      }
+      
+      console.log('[Publish] ✅ Room now connected, proceeding with publish');
+    }
+    
+    console.log('[Publish] Getting tracks from stream...');
 
     try {
       const audioTrack = mediaStream.getAudioTracks()[0];
       const videoTrack = mediaStream.getVideoTracks()[0];
 
+      console.log('[Publish] Audio track:', audioTrack?.id, 'enabled:', audioTrack?.enabled);
+      console.log('[Publish] Video track:', videoTrack?.id, 'enabled:', videoTrack?.enabled);
+
       if (audioTrack) {
+        console.log('[Publish] Publishing audio track...');
         await roomRef.current.localParticipant.publishTrack(audioTrack);
-        console.log('Published audio track');
+        console.log('[Publish] ✅ Published audio track');
       }
 
       if (videoTrack) {
+        console.log('[Publish] Publishing video track...');
         await roomRef.current.localParticipant.publishTrack(videoTrack);
-        console.log('Published video track');
+        console.log('[Publish] ✅ Published video track');
       }
     } catch (error) {
-      console.error('Failed to publish tracks:', error);
+      console.error('[Publish] ❌ Failed to publish tracks:', error);
+      throw error;
     }
   }, []);
 
   // Disconnect from LiveKit
-  const disconnectFromLiveKit = useCallback(() => {
+  const disconnectFromLiveKit = useCallback(async () => {
+    console.log('[LiveKit] Disconnecting from room...');
     if (roomRef.current) {
-      roomRef.current.disconnect();
+      try {
+        // Remove all event listeners to prevent memory leaks
+        roomRef.current.removeAllListeners();
+        
+        // Disconnect from room - this is async, must await it
+        await roomRef.current.disconnect();
+        console.log('[LiveKit] ✅ Disconnected from room');
+      } catch (error) {
+        console.error('[LiveKit] Error during disconnect:', error);
+      }
+      
       roomRef.current = null;
       setLiveKitConnected(false);
       setAgentReady(false);
-      console.log('Disconnected from LiveKit');
     }
   }, []);
 
   useEffect(() => {
     const requestPermissions = async () => {
+      console.log('[Permissions] Requesting camera and microphone access...');
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -261,15 +370,13 @@ export default function RecordPage() {
           audio: true,
         });
 
+        console.log('[Permissions] Access granted, setting stream');
         setStream(mediaStream);
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
         }
         setHasPermission(true);
         setPermissionError('');
-
-        // Connect to LiveKit in background (without publishing tracks)
-        connectToLiveKit();
 
       } catch (error) {
         setHasPermission(false);
@@ -303,19 +410,42 @@ export default function RecordPage() {
     requestPermissions();
 
     return () => {
+      console.log('[Cleanup] Component unmounting, cleaning up resources...');
       if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+        stream.getTracks().forEach((track) => {
+          track.stop();
+          console.log('[Cleanup] Stopped track:', track.kind);
+        });
       }
       disconnectFromLiveKit();
     };
-  }, []);
+  }, [disconnectFromLiveKit]);
+
+  // Connect to LiveKit when stream is available
+  useEffect(() => {
+    console.log('[Connection Check] stream:', !!stream, 'liveKitConnected:', liveKitConnected);
+    if (stream && !liveKitConnected) {
+      console.log('[Connection] Initiating LiveKit connection...');
+      connectToLiveKit();
+    }
+  }, [stream, liveKitConnected, connectToLiveKit]);
 
   const handleStartRecording = async () => {
     if (stream) {
+      console.log('[Start Recording] Stream available, beginning recording...');
+      console.log('[Start Recording] Video tracks:', stream.getVideoTracks().length);
+      console.log('[Start Recording] Audio tracks:', stream.getAudioTracks().length);
+      
       setIsRecording(true);
       setIsPaused(false);
       setRecordingEnded(false);
       setShowFlowBoard(true);
+
+      // Ensure video is still playing
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        console.log('[Start Recording] Video element set');
+      }
 
       // Start audio recording
       try {
@@ -360,15 +490,81 @@ export default function RecordPage() {
       setTranscripts([]);
 
       // Publish tracks to LiveKit (already connected in background)
+      console.log('[Start Recording] Publishing tracks to LiveKit...');
       await publishTracksToLiveKit(stream);
+      console.log('[Start Recording] Tracks published');
     }
   };
 
-  const handlePauseRecording = () => {
+  const handlePauseRecording = async () => {
+    console.log('[Pause] Pausing recording...');
+    
+    // Stop audio recording
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      console.log('[Pause] Audio recording paused');
+    }
+
+    // Unpublish tracks so agent doesn't transcribe during pause
+    if (roomRef.current && roomRef.current.state === 'connected') {
+      try {
+        const publications = Array.from(roomRef.current.localParticipant.trackPublications.values());
+        console.log('[Pause] Unpublishing', publications.length, 'tracks...');
+        
+        for (const publication of publications) {
+          if (publication.track) {
+            await roomRef.current.localParticipant.unpublishTrack(publication.track);
+            console.log('[Pause] Unpublished track:', publication.track.kind);
+          }
+        }
+        
+        isTracksPausedRef.current = true;
+        console.log('[Pause] ✅ Tracks paused - no transcript collection during pause');
+      } catch (error) {
+        console.error('[Pause] Error unpublishing tracks:', error);
+      }
+    }
+
     setIsPaused(true);
   };
 
-  const handleResumeRecording = () => {
+  const handleResumeRecording = async () => {
+    console.log('[Resume] Starting resume process...');
+    if (stream) {
+      // Republish tracks first to resume transcription
+      if (isTracksPausedRef.current) {
+        console.log('[Resume] Republishing tracks to LiveKit...');
+        try {
+          await publishTracksToLiveKit(stream);
+          isTracksPausedRef.current = false;
+          console.log('[Resume] ✅ Tracks resumed - transcript collection resumed');
+        } catch (error) {
+          console.error('[Resume] ❌ Failed to republish tracks:', error);
+        }
+      }
+
+      // Restart audio recording with same stream
+      try {
+        console.log('[Resume] Creating new MediaRecorder...');
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = mediaRecorder;
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.start();
+        console.log('[Resume] ✅ Audio recording resumed');
+      } catch (error) {
+        console.error('[Resume] ❌ Failed to resume audio recording:', error);
+      }
+    } else {
+      console.error('[Resume] ❌ No stream available');
+    }
+
+    console.log('[Resume] Setting isPaused to false');
     setIsPaused(false);
   };
 
@@ -376,14 +572,19 @@ export default function RecordPage() {
     setShowConfirmation(true);
   };
 
-  const confirmStopRecording = () => {
-    // Stop audio recording
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+  const confirmStopRecording = async () => {
+    // Stop audio recording if still recording (might be paused)
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
       console.log('Audio recording stopped');
     }
 
-    disconnectFromLiveKit();
+    // Disconnect LiveKit room to end agent session
+    // MUST await this so agent has time to disconnect
+    console.log('[Confirm Stop] Disconnecting from LiveKit...');
+    await disconnectFromLiveKit();
+    console.log('[Confirm Stop] ✅ Disconnected, showing save options');
+
     setIsRecording(false);
     setIsPaused(false);
     setShowChat(true);
@@ -777,12 +978,22 @@ export default function RecordPage() {
                   >
                     Cancel
                   </button>
-                  <Link
-                    href="/home"
+                  <button
+                    onClick={async () => {
+                      console.log('[Leave Button] Stopping camera and disconnecting agent...');
+                      if (stream) {
+                        stream.getTracks().forEach((track) => {
+                          track.stop();
+                          console.log('[Leave Button] Stopped track:', track.kind);
+                        });
+                      }
+                      await disconnectFromLiveKit();
+                      router.push('/home');
+                    }}
                     className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
                   >
                     Leave
-                  </Link>
+                  </button>
                 </div>
               </>
             ) : (
@@ -811,12 +1022,22 @@ export default function RecordPage() {
                   >
                     Cancel
                   </button>
-                  <Link
-                    href="/home"
+                  <button
+                    onClick={async () => {
+                      console.log('[Leave Without Saving] Stopping camera and disconnecting agent...');
+                      if (stream) {
+                        stream.getTracks().forEach((track) => {
+                          track.stop();
+                          console.log('[Leave Without Saving] Stopped track:', track.kind);
+                        });
+                      }
+                      await disconnectFromLiveKit();
+                      router.push('/home');
+                    }}
                     className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
                   >
                     Skip Saving
-                  </Link>
+                  </button>
                   <button
                     type="button"
                     onClick={async () => {
@@ -856,6 +1077,16 @@ export default function RecordPage() {
                         
                         console.log('[RecordPage] Session saved with ID:', result.sessionId);
                       }
+                      
+                      // CRITICAL: Stop camera and disconnect agent before navigating away
+                      console.log('[Save Button] Stopping camera and disconnecting agent...');
+                      if (stream) {
+                        stream.getTracks().forEach((track) => {
+                          track.stop();
+                          console.log('[Save Button] Stopped track:', track.kind);
+                        });
+                      }
+                      await disconnectFromLiveKit();
                       
                       setShowHomeModal(false);
                       router.push('/home');
