@@ -225,7 +225,7 @@ export default function RecordPage() {
       {/* Main Layout: Recording on Left, Flow Board on Right */}
       <div className="flex h-screen w-full">
         {/* LEFT SIDE - Recording Interface */}
-        <div className={`flex-1 flex flex-col items-center justify-center px-4 pt-20 transition-all duration-500 ${(isRecording || showFlowBoard) ? 'w-1/2' : 'w-full'}`}>
+        <div className={`flex flex-col items-center justify-center px-4 pt-20 transition-all duration-500 ${showFlowBoard ? 'w-1/2' : 'w-full'}`}>
           {showChat ? (
             <div className="w-full max-w-2xl space-y-6 animate-[fade-in-down_0.8s_ease-out] transition-transform duration-500 ease-out">
               <div className="text-center">
@@ -297,12 +297,11 @@ export default function RecordPage() {
             <div className="w-full max-w-xl space-y-6 animate-fade-in-down">
               <div className="text-center">
                 <h1 className="text-3xl font-bold text-white mb-2">
-                  Recording
+                  Ready to Record
                 </h1>
                 <p className="text-gray-300">
                   {isRecording && !isPaused && 'Recording in progress...'}
                   {isRecording && isPaused && 'Recording paused'}
-                  {!isRecording && 'Ready to record'}
                 </p>
               </div>
 
@@ -421,22 +420,24 @@ export default function RecordPage() {
           )}
         </div>
 
-        {/* RIGHT SIDE - React Flow Board */}
+        {/* RIGHT SIDE - React Flow Board in Modal */}
         <div
-          className={`transition-all duration-700 ease-out overflow-hidden bg-white border-l border-gray-300 ${
+          className={`transition-all duration-700 ease-out overflow-hidden flex items-center justify-center ${
             showFlowBoard ? 'w-1/2 opacity-100' : 'w-0 opacity-0'
           }`}
         >
           {showFlowBoard && (
-            <div className="h-full w-full flex flex-col">
-              <div className="px-6 py-4 border-b border-gray-300 bg-gradient-to-r from-blue-50 to-purple-50">
-                <h2 className="text-xl font-bold text-gray-900">Live Processing</h2>
-                <p className="text-sm text-gray-600">Visualization of content being processed</p>
-              </div>
-              <div className="flex-1">
-                <ReactFlow nodes={nodes} edges={edges} fitView>
-                  {/* You can add controls and other ReactFlow components here */}
-                </ReactFlow>
+            <div className="w-full h-full flex items-center justify-center p-6">
+              <div className="w-full h-full shadow-2xl rounded-2xl overflow-hidden border border-gray-700 bg-gray-900 flex flex-col">
+                <div className="px-6 py-4 border-b border-gray-700 bg-gradient-to-r from-blue-900 to-purple-900">
+                  <h2 className="text-xl font-bold text-white">Live Processing</h2>
+                  <p className="text-sm text-gray-300">Visualization of content being processed</p>
+                </div>
+                <div className="flex-1 bg-gray-800">
+                  <ReactFlow nodes={nodes} edges={edges} fitView>
+                    {/* You can add controls and other ReactFlow components here */}
+                  </ReactFlow>
+                </div>
               </div>
             </div>
           )}

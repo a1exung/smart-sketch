@@ -3,7 +3,7 @@
 
 import { useRef } from 'react';
 import Auth from './auth/page';
-import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
+import LandingNeuralNetworkBackground from '@/components/LandingNeuralNetworkBackground';
 
 export default function Home() {
   const authSectionRef = useRef<HTMLDivElement>(null);
@@ -15,7 +15,7 @@ export default function Home() {
 
   return (
     <div ref={scrollContainerRef} className="relative w-full snap-y snap-mandatory overflow-y-scroll h-screen">
-      <NeuralNetworkBackground />
+      <LandingNeuralNetworkBackground />
       {/* Landing Page Section */}
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen bg-transparent overflow-hidden snap-start">
         <main className="flex flex-col items-center justify-center flex-1 px-4 text-center">

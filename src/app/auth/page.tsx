@@ -69,6 +69,12 @@ export default function AuthPage({ scrollRootRef }: AuthPageProps) {
 
     const elements = containerRef.current?.querySelectorAll('[data-index]');
     elements?.forEach((el) => observer.observe(el));
+    
+    // Immediately mark all elements as visible on mount
+    const elementArray = Array.from(elements || []);
+    setVisibleElements(new Set(
+      elementArray.map((el) => parseInt(el.getAttribute('data-index') || '0'))
+    ));
 
     return () => observer.disconnect();
   }, [isLogin, scrollRootRef]);
@@ -76,13 +82,57 @@ export default function AuthPage({ scrollRootRef }: AuthPageProps) {
   const isVisible = (index: number) => visibleElements.has(index);
 
   const handleToggle = () => {
-    setIsAnimatingOut(true);
-    setVisibleElements(new Set());
     setError('');
+    // Animate each field out in sequence (100ms stagger per field)
+    const fieldCount = isLogin ? 5 : 7; // login: 2 fields + header, toggle link, button = 5 total | register: 5 fields + header, toggle link, button = 7 total
+    const staggerTime = fieldCount * 100; // Time to remove all from visible set
+    const animationDuration = 1000; // CSS transition duration
+    const totalAnimationTime = staggerTime + animationDuration; // Wait for stagger + full animation
+    
+    setIsAnimatingOut(true);
+    // Remove elements from visible set one by one to trigger staggered exit animation
+    for (let i = 0; i <= fieldCount; i++) {
+      setTimeout(() => {
+        setVisibleElements((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(i);
+          return newSet;
+        });
+      }, i * 100);
+    }
+    
+    // Switch form after all fields have animated out completely
     setTimeout(() => {
       setIsLogin(!isLogin);
       setIsAnimatingOut(false);
-    }, 300);
+      setVisibleElements(new Set()); // Clear visible set first
+      
+      // Wait for React to update DOM with new form, then add fields back with stagger
+      setTimeout(() => {
+        const elements = containerRef.current?.querySelectorAll('[data-index]');
+        const elementArray = Array.from(elements || []);
+        
+        // Sort by data-index to ensure proper order
+        elementArray.sort((a, b) => {
+          const idxA = parseInt(a.getAttribute('data-index') || '0');
+          const idxB = parseInt(b.getAttribute('data-index') || '0');
+          return idxA - idxB;
+        });
+        
+        // Add header first (index 0)
+        setVisibleElements(new Set([0]));
+        
+        // Then add each field one by one with 150ms stagger
+        elementArray.forEach((el) => {
+          const index = parseInt(el.getAttribute('data-index') || '0');
+          if (index !== 0) { // Skip header, already added
+            setTimeout(() => {
+              setVisibleElements((prev) => new Set(prev).add(index));
+            }, (index) * 150);
+          }
+        });
+      }, 50); // Wait for DOM to fully update with new form
+    }, totalAnimationTime);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -181,7 +231,7 @@ export default function AuthPage({ scrollRootRef }: AuthPageProps) {
         </h1>
 
         {isLogin && (
-          <form onSubmit={handleLogin} className={`flex flex-col space-y-4 transition-all duration-300 ${isAnimatingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+          <form onSubmit={handleLogin} className="flex flex-col space-y-4">
             {error && (
               <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
                 {error}
@@ -248,7 +298,7 @@ export default function AuthPage({ scrollRootRef }: AuthPageProps) {
 
         {/* Register Form */}
         {!isLogin && (
-          <form onSubmit={handleRegister} className={`flex flex-col space-y-4 transition-all duration-300 ${isAnimatingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+          <form onSubmit={handleRegister} className="flex flex-col space-y-4">
             {error && (
               <div className={`p-3 border rounded-lg text-sm ${
                 error.includes('successful')
