@@ -418,7 +418,6 @@ export default function RecordPage() {
                 </div>
               )}
 
-              <div className="bg-white rounded-lg shadow-lg border border-gray-200 h-[60vh] flex flex-col">
               <div className="bg-gray-900 rounded-lg shadow-lg border border-gray-700 h-[70vh] flex flex-col">
                 <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
                   {chatMessages.length === 0 && (
@@ -616,24 +615,6 @@ export default function RecordPage() {
           }`}
         >
           {showFlowBoard && (
-//             <div className="h-full w-full flex flex-col">
-//               <div className="px-6 py-4 border-b border-gray-300 bg-gradient-to-r from-blue-50 to-purple-50">
-//                 <h2 className="text-xl font-bold text-gray-900">Live Mind Map</h2>
-//                 <p className="text-sm text-gray-600">
-//                   {agentReady
-//                     ? 'Concepts appear as the AI processes your speech'
-//                     : liveKitConnected
-//                       ? 'Waiting for agent to connect...'
-//                       : 'Connect to see real-time concepts'}
-//                 </p>
-//               </div>
-//               <div className="flex-1">
-//                 <ReactFlow
-//                   nodes={nodes}
-//                   edges={edges}
-//                   fitView
-//                   attributionPosition="bottom-left"
-//                 />
             <div className="w-full h-full flex items-center justify-center p-6">
               <div className="w-full h-full shadow-2xl rounded-2xl overflow-hidden border border-gray-700 bg-gray-900 flex flex-col">
                 <div className="px-6 py-4 border-b border-gray-700 bg-gradient-to-r from-blue-900 to-purple-900">
@@ -654,14 +635,14 @@ export default function RecordPage() {
                     attributionPosition="bottom-left"
                   />
                 </div>
+                {/* Live transcript preview - inside card */}
+                {transcripts.length > 0 && (
+                  <div className="px-4 py-3 border-t border-gray-700 bg-gray-900 max-h-20 overflow-y-auto">
+                    <p className="text-xs text-gray-400 font-medium mb-1">Latest transcript:</p>
+                    <p className="text-sm text-gray-300">{transcripts[transcripts.length - 1]}</p>
+                  </div>
+                )}
               </div>
-              {/* Live transcript preview */}
-              {transcripts.length > 0 && (
-                <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 max-h-24 overflow-y-auto">
-                  <p className="text-xs text-gray-500 font-medium mb-1">Latest transcript:</p>
-                  <p className="text-sm text-gray-700">{transcripts[transcripts.length - 1]}</p>
-                </div>
-              )}
             </div>
           )}
         </div>
