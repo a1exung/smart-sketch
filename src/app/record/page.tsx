@@ -8,7 +8,6 @@ import 'reactflow/dist/style.css';
 import ReactMarkdown from 'react-markdown';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant, ConnectionState } from 'livekit-client';
-import { Room, RoomEvent, DataPacket_Kind, RemoteParticipant, LocalParticipant, ConnectionState } from 'livekit-client';
 import { saveSession } from '@/lib/sessions-service';
 import { useAuth } from '@/lib/auth-context';
 import NeuralNetworkBackground from '@/components/NeuralNetworkBackground';
